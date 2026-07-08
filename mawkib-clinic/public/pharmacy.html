@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pharmacy · Mawkib Clinic</title>
+<link rel="stylesheet" href="/style.css">
+</head>
+<body class="role-pharmacy">
+<header class="bar">
+  <div><h1>Pharmacy</h1><div class="sub">Give the medicines the doctor ticked, then mark done</div></div>
+  <a class="home" href="/">Menu</a>
+</header>
+<main>
+  <div id="listView">
+    <h2>Ready to dispense</h2>
+    <div id="ready"></div>
+    <h2>Completed today</h2>
+    <div id="doneList"></div>
+  </div>
+
+  <div id="detailView" style="display:none">
+    <button class="btn secondary small" id="back">&larr; Back</button>
+    <div class="card" id="pInfo" style="margin-top:12px"></div>
+    <div class="card">
+      <h2 style="margin-top:0">Medicines to give</h2>
+      <div id="rxItems"></div>
+      <div style="margin-top:18px">
+        <button class="btn" id="dispense">Medicines handed over ✓</button>
+      </div>
+    </div>
+  </div>
+</main>
+
+<script src="/app.js"></script>
+<script>
+let currentId = null;
+
+async function refresh() {
+  const list = await api('/api/patients?status=all');
+  const ready = list.filter(p => p.status === 'prescribed');
+  const done = list.filter(p => p.status === 'dispensed');
+  document.getElementById('ready').innerHTML = ready.length
+    ? ready.map(p => patientRow(p, p.meds ? `<div class="meta">💊 ${esc(p.meds)}</div>` : '')).join('')
+    : '<div class="empty">No prescriptions waiting. They appear here as soon as the doctor saves.</div>';
+  document.getElementById('doneList').innerHTML = done.length
+    ? done.slice().reverse().map(p => patientRow(p)).join('')
+    : '<div class="empty">Nothing dispensed yet today.</div>';
+  document.querySelectorAll('#ready .row').forEach(r => r.onclick = () => openPatient(Number(r.dataset.id)));
+}
+
+async function openPatient(id) {
+  currentId = id;
+  window._pausePoll = true;
+  const p = await api('/api/patients/' + id);
+
+  document.getElementById('pInfo').innerHTML = `
+    <div style="display:flex;gap:14px;align-items:center">
+      <div class="token">${p.token}</div>
+      <div>
+        <div style="font-size:22px;font-weight:900">${esc(p.name)}</div>
+        <div class="note">${[p.age ? p.age + ' yrs' : '', p.gender || ''].filter(Boolean).join(' · ')}</div>
+      </div>
+    </div>
+    ${p.allergies ? `<p style="color:var(--danger)"><b>⚠ Allergies:</b> ${esc(p.allergies)}</p>` : ''}
+    ${p.notes ? `<p><b>Doctor notes:</b> ${esc(p.notes)}</p>` : ''}`;
+
+  document.getElementById('rxItems').innerHTML = (p.items && p.items.length)
+    ? p.items.map(it => `
+        <div class="med checked">
+          <div class="medname">${esc(it.name)}</div>
+          <div style="font-weight:700">${esc(it.dosage || '')}</div>
+        </div>`).join('')
+    : '<div class="empty">Doctor saved no medicines — advice only. Mark as done.</div>';
+
+  document.getElementById('listView').style.display = 'none';
+  document.getElementById('detailView').style.display = 'block';
+  window.scrollTo(0, 0);
+}
+
+document.getElementById('back').onclick = () => {
+  document.getElementById('detailView').style.display = 'none';
+  document.getElementById('listView').style.display = 'block';
+  window._pausePoll = false;
+  refresh();
+};
+
+document.getElementById('dispense').onclick = async () => {
+  try {
+    await api('/api/patients/' + currentId + '/dispense', { method: 'POST' });
+    toast('Marked as dispensed', 'ok');
+    document.getElementById('back').click();
+  } catch (e) { toast(e.message, 'err'); }
+};
+
+poll(refresh);
+</script>
+</body>
+</html>

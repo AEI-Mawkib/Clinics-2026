@@ -1,0 +1,123 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Doctor · Mawkib Clinic</title>
+<link rel="stylesheet" href="/style.css">
+</head>
+<body class="role-doctor">
+<header class="bar">
+  <div><h1>Doctor</h1><div class="sub">Tap a patient, write notes, tick medicines</div></div>
+  <a class="home" href="/">Menu</a>
+</header>
+<main>
+  <div id="listView">
+    <h2>Waiting for consultation</h2>
+    <div id="waiting"></div>
+    <h2>Already prescribed today</h2>
+    <div id="done"></div>
+  </div>
+
+  <div id="detailView" style="display:none">
+    <button class="btn secondary small" id="back">&larr; Back to queue</button>
+    <div class="card" id="pInfo" style="margin-top:12px"></div>
+
+    <div class="card">
+      <label for="vitals">Vitals (optional)</label>
+      <input id="vitals" type="text" placeholder="BP / temperature / pulse">
+
+      <label for="notes">Doctor notes</label>
+      <textarea id="notes" placeholder="Diagnosis, advice, follow-up..."></textarea>
+
+      <label>Medicines — tick, then type dosage</label>
+      <div id="meds"></div>
+
+      <div style="margin-top:18px">
+        <button class="btn" id="savePrescription">Save &amp; send to Pharmacy</button>
+      </div>
+    </div>
+  </div>
+</main>
+
+<script src="/app.js"></script>
+<script>
+let currentId = null;
+let medList = [];
+
+async function refresh() {
+  const list = await api('/api/patients?status=all');
+  const waiting = list.filter(p => p.status === 'waiting');
+  const rest = list.filter(p => p.status !== 'waiting');
+  document.getElementById('waiting').innerHTML = waiting.length
+    ? waiting.map(p => patientRow(p)).join('')
+    : '<div class="empty">No one is waiting right now.</div>';
+  document.getElementById('done').innerHTML = rest.length
+    ? rest.slice().reverse().map(p => patientRow(p)).join('')
+    : '<div class="empty">Nothing prescribed yet today.</div>';
+  document.querySelectorAll('.row').forEach(r => r.onclick = () => openPatient(Number(r.dataset.id)));
+}
+
+async function openPatient(id) {
+  currentId = id;
+  window._pausePoll = true;
+  const [p, meds] = await Promise.all([api('/api/patients/' + id), api('/api/medicines')]);
+  medList = meds;
+
+  document.getElementById('pInfo').innerHTML = `
+    <div style="display:flex;gap:14px;align-items:center">
+      <div class="token">${p.token}</div>
+      <div>
+        <div style="font-size:22px;font-weight:900">${esc(p.name)}</div>
+        <div class="note">${[p.age ? p.age + ' yrs' : '', p.gender || ''].filter(Boolean).join(' · ')}</div>
+      </div>
+    </div>
+    <p><b>Complaint:</b> ${esc(p.complaint || '—')}</p>
+    ${p.allergies ? `<p style="color:var(--danger)"><b>⚠ Allergies:</b> ${esc(p.allergies)}</p>` : ''}`;
+
+  document.getElementById('vitals').value = p.vitals || '';
+  document.getElementById('notes').value = p.notes || '';
+
+  const chosen = {};
+  (p.items || []).forEach(it => chosen[it.medicine_id] = it.dosage || '');
+  document.getElementById('meds').innerHTML = meds.map(m => `
+    <div class="med ${m.id in chosen ? 'checked' : ''}" data-id="${m.id}">
+      <input type="checkbox" ${m.id in chosen ? 'checked' : ''}>
+      <div class="medname">${esc(m.name)}</div>
+      <input class="dose" type="text" placeholder="Dosage" value="${esc(chosen[m.id] || '')}">
+    </div>`).join('');
+  document.querySelectorAll('.med input[type=checkbox]').forEach(cb => {
+    cb.onchange = () => cb.closest('.med').classList.toggle('checked', cb.checked);
+  });
+
+  document.getElementById('listView').style.display = 'none';
+  document.getElementById('detailView').style.display = 'block';
+  window.scrollTo(0, 0);
+}
+
+document.getElementById('back').onclick = () => {
+  document.getElementById('detailView').style.display = 'none';
+  document.getElementById('listView').style.display = 'block';
+  window._pausePoll = false;
+  refresh();
+};
+
+document.getElementById('savePrescription').onclick = async () => {
+  const items = [...document.querySelectorAll('.med')]
+    .filter(m => m.querySelector('input[type=checkbox]').checked)
+    .map(m => ({ medicine_id: Number(m.dataset.id), dosage: m.querySelector('.dose').value.trim() }));
+  try {
+    await api('/api/patients/' + currentId + '/prescription', { method: 'POST', body: {
+      notes: document.getElementById('notes').value.trim(),
+      vitals: document.getElementById('vitals').value.trim(),
+      items,
+    }});
+    toast('Sent to Pharmacy', 'ok');
+    document.getElementById('back').click();
+  } catch (e) { toast(e.message, 'err'); }
+};
+
+poll(refresh);
+</script>
+</body>
+</html>
