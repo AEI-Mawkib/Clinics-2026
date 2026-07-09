@@ -1,0 +1,282 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Admin · Mawkib Clinic</title>
+<link rel="stylesheet" href="/style.css">
+</head>
+<body class="role-admin">
+<header class="bar">
+  <img class="logo" src="/logo.png" alt="Azadar e Imam Clinic" onerror="this.style.display='none'">
+  <div><h1>Admin</h1><div class="sub" id="siteBanner"></div><div class="weburl">azadareimam.org</div></div>
+  <a class="home" href="/">Menu</a>
+</header>
+<main>
+  <div class="card" id="pinCard">
+    <label for="pin">Enter admin PIN</label>
+    <input id="pin" type="password" inputmode="numeric" placeholder="PIN">
+    <div style="margin-top:14px"><button class="btn" id="unlock">Unlock</button></div>
+  </div>
+
+  <div id="panel" style="display:none">
+  <h2>Today at a glance</h2>
+  <div class="stat-grid" id="stats"></div>
+
+  <h2>Medicine stock — today</h2>
+  <div class="card">
+    <p class="note">Live counts. "Dispensed" is units handed out today; "Not given" is how many
+      times the pharmacist could not give it (your stock-out signal). Set the starting counts
+      in the medicine list at the bottom of this page.</p>
+    <div style="overflow-x:auto">
+      <table id="stockTable" style="width:100%;border-collapse:collapse;font-size:16px">
+        <thead>
+          <tr style="text-align:left;border-bottom:2px solid var(--line)">
+            <th style="padding:8px 6px">Medicine</th>
+            <th style="padding:8px 6px">Dispensed</th>
+            <th style="padding:8px 6px">Not given</th>
+            <th style="padding:8px 6px">Remaining</th>
+            <th style="padding:8px 6px">Status</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </div>
+    <div style="margin-top:14px">
+      <button class="btn small" id="medReport">Download medicine report (Excel/CSV)</button>
+    </div>
+  </div>
+
+  <h2>Site being served</h2>
+  <div class="card">
+    <p class="note">The selected site is shown on the Intake, Doctor and Pharmacy pages
+      and stamped on every patient record.</p>
+    <select id="siteSel"></select>
+    <div style="margin-top:12px"><button class="btn small" id="setSite">Set as active site</button></div>
+    <div id="siteList" style="margin-top:14px"></div>
+    <label for="newSite">Add a site</label>
+    <div style="display:flex;gap:10px">
+      <input id="newSite" type="text" placeholder="Site name">
+      <button class="btn small" data-add="site" style="white-space:nowrap">Add</button>
+    </div>
+  </div>
+
+  <h2>End-of-shift export</h2>
+  <div class="card">
+    <p class="note">Downloads one file with every patient, note and prescription from the chosen date.
+      Opens directly in Excel. Upload it to OneDrive when internet is available.</p>
+    <label for="expDate">Date</label>
+    <input id="expDate" type="text" placeholder="YYYY-MM-DD">
+    <div style="display:flex;gap:10px;margin-top:14px;flex-wrap:wrap">
+      <button class="btn small" id="exportCsv">Download shift file (Excel/CSV)</button>
+      <button class="btn small secondary" id="backupDb">Download full database backup</button>
+    </div>
+  </div>
+
+  <h2>Doctors</h2>
+  <div class="card">
+    <div id="doctorList"></div>
+    <label for="newDoctor">Add a doctor</label>
+    <div style="display:flex;gap:10px">
+      <input id="newDoctor" type="text" placeholder="e.g. Dr. Hussain">
+      <button class="btn small" data-add="doctor" style="white-space:nowrap">Add</button>
+    </div>
+  </div>
+
+  <h2>Pharmacists</h2>
+  <div class="card">
+    <div id="pharmacistList"></div>
+    <label for="newPharmacist">Add a pharmacist</label>
+    <div style="display:flex;gap:10px">
+      <input id="newPharmacist" type="text" placeholder="Name">
+      <button class="btn small" data-add="pharmacist" style="white-space:nowrap">Add</button>
+    </div>
+  </div>
+
+  <h2>Nursing assistants (wound care)</h2>
+  <div class="card">
+    <p class="note">These names appear in the "Performed by" dropdown for wound care on the
+      Pharmacy page, alongside the pharmacists.</p>
+    <div id="nurseList"></div>
+    <label for="newNurse">Add a nursing assistant</label>
+    <div style="display:flex;gap:10px">
+      <input id="newNurse" type="text" placeholder="Name">
+      <button class="btn small" data-add="nurse" style="white-space:nowrap">Add</button>
+    </div>
+  </div>
+
+  <h2>Nationalities</h2>
+  <div class="card">
+    <div id="nationalityList"></div>
+    <label for="newNationality">Add a nationality</label>
+    <div style="display:flex;gap:10px">
+      <input id="newNationality" type="text" placeholder="e.g. Bahrain">
+      <button class="btn small" data-add="nationality" style="white-space:nowrap">Add</button>
+    </div>
+  </div>
+
+  <h2>Medicine list (doctor's checklist)</h2>
+  <div class="card">
+    <div id="medAdmin"></div>
+    <label for="newMed">Add a medicine</label>
+    <div style="display:flex;gap:10px">
+      <input id="newMed" type="text" placeholder="Name and strength">
+      <button class="btn small" id="addMed" style="white-space:nowrap">Add</button>
+    </div>
+  </div>
+  </div><!-- /panel -->
+</main>
+
+<script src="/app.js"></script>
+<script>
+let PIN = '';
+document.getElementById('unlock').onclick = async () => {
+  const pin = document.getElementById('pin').value;
+  const r = await api('/api/pin-check', { method: 'POST', body: { pin } });
+  if (!r.ok) return toast('Wrong PIN', 'err');
+  PIN = pin;
+  document.getElementById('pinCard').style.display = 'none';
+  document.getElementById('panel').style.display = 'block';
+  loadAll();
+};
+
+function todayStr() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+}
+document.getElementById('expDate').value = todayStr();
+
+/* ---- generic list editor (doctors, pharmacists, nationalities, sites) ---- */
+const LIST_BOX = { doctor: 'doctorList', pharmacist: 'pharmacistList', nurse: 'nurseList', nationality: 'nationalityList', site: 'siteList' };
+
+async function renderList(type) {
+  const rows = await api('/api/list/' + type + '?all=1');
+  const box = document.getElementById(LIST_BOX[type]);
+  box.innerHTML = rows.length ? rows.map(r => `
+    <div class="med ${r.active ? 'checked' : ''}" data-id="${r.id}" data-type="${type}">
+      <input type="checkbox" ${r.active ? 'checked' : ''} title="Show on the ${type} list">
+      <input class="dose" type="text" value="${esc(r.name)}" style="display:block;flex:1;width:auto">
+      <button class="btn small secondary saveItem">Save</button>
+      <button class="btn small secondary delItem" style="color:var(--danger)">Remove</button>
+    </div>`).join('') : '<div class="empty">Nothing here yet — add below.</div>';
+
+  box.querySelectorAll('.saveItem').forEach(btn => btn.onclick = async () => {
+    const row = btn.closest('.med');
+    await api('/api/list/' + type, { method: 'POST', headers: { 'x-pin': PIN }, body: {
+      id: Number(row.dataset.id),
+      name: row.querySelector('.dose').value.trim(),
+      active: row.querySelector('input[type=checkbox]').checked,
+    }});
+    toast('Saved', 'ok');
+    loadAll();
+  });
+  box.querySelectorAll('.delItem').forEach(btn => btn.onclick = async () => {
+    const row = btn.closest('.med');
+    await api('/api/list/' + type, { method: 'POST', headers: { 'x-pin': PIN }, body: { id: Number(row.dataset.id), delete: true } });
+    toast('Removed', 'ok');
+    loadAll();
+  });
+}
+
+document.querySelectorAll('[data-add]').forEach(btn => btn.onclick = async () => {
+  const type = btn.dataset.add;
+  const inputId = { site: 'newSite', doctor: 'newDoctor', pharmacist: 'newPharmacist', nurse: 'newNurse', nationality: 'newNationality' }[type];
+  const input = document.getElementById(inputId);
+  const name = input.value.trim();
+  if (!name) return;
+  await api('/api/list/' + type, { method: 'POST', headers: { 'x-pin': PIN }, body: { name } });
+  input.value = '';
+  toast('Added', 'ok');
+  loadAll();
+});
+
+/* ---- active site ---- */
+async function renderSiteSelector() {
+  const [sites, settings] = await Promise.all([api('/api/list/site'), api('/api/settings')]);
+  const sel = document.getElementById('siteSel');
+  sel.innerHTML = sites.map(s =>
+    `<option ${s.name === settings.active_site ? 'selected' : ''}>${esc(s.name)}</option>`).join('');
+}
+document.getElementById('setSite').onclick = async () => {
+  await api('/api/settings', { method: 'POST', headers: { 'x-pin': PIN }, body: { active_site: document.getElementById('siteSel').value } });
+  toast('Active site updated', 'ok');
+  loadAll();
+};
+
+/* ---- medicines (same as v1) ---- */
+async function renderMeds() {
+  const meds = await api('/api/medicines?all=1');
+  document.getElementById('medAdmin').innerHTML =
+    '<p class="note">Stock = units on the shelf right now (tablets / sachets / tubes). It counts down automatically as the pharmacist dispenses. Edit anything below, then press <b>Save all medicines</b> once.</p>'
+    + meds.map(m => `
+    <div class="med ${stockClass(m.stock, m.full_stock)} ${m.active ? 'checked' : ''}" data-id="${m.id}">
+      <input type="checkbox" ${m.active ? 'checked' : ''} title="Show on doctor's list">
+      <input class="dose" type="text" value="${esc(m.name)}" style="display:block;flex:1;width:auto">
+      <input class="dose stockIn" type="number" inputmode="numeric" min="0" value="${m.stock || 0}"
+             style="display:block;width:110px" title="Units in stock">
+    </div>`).join('')
+    + '<div style="margin-top:14px"><button class="btn" id="saveAllMeds">Save all medicines</button></div>';
+  document.getElementById('saveAllMeds').onclick = async () => {
+    const rows = [...document.querySelectorAll('#medAdmin .med')];
+    for (const row of rows) {
+      await api('/api/medicines', { method: 'POST', headers: { 'x-pin': PIN }, body: {
+        id: Number(row.dataset.id),
+        name: row.querySelector('.dose').value.trim(),
+        active: row.querySelector('input[type=checkbox]').checked,
+        stock: Number(row.querySelector('.stockIn').value) || 0,
+      }});
+    }
+    toast('All medicines saved', 'ok');
+    loadAll();
+  };
+}
+document.getElementById('addMed').onclick = async () => {
+  const name = document.getElementById('newMed').value.trim();
+  if (!name) return;
+  await api('/api/medicines', { method: 'POST', headers: { 'x-pin': PIN }, body: { name } });
+  document.getElementById('newMed').value = '';
+  toast('Medicine added', 'ok');
+  loadAll();
+};
+
+async function renderStock() {
+  const data = await api('/api/stock-summary');
+  const colors = { OK: 'dispensed', REORDER: 'waiting', OUT: '' };
+  document.querySelector('#stockTable tbody').innerHTML = data.rows.map(r => `
+    <tr class="${stockClass(r.stock, r.full_stock)}" style="border-bottom:1px solid var(--line);${r.active ? '' : 'opacity:.5'}">
+      <td style="padding:8px 6px;font-weight:700">${esc(r.name)}</td>
+      <td style="padding:8px 6px">${r.dispensed_today}</td>
+      <td style="padding:8px 6px;${r.not_given_today > 0 ? 'color:var(--danger);font-weight:800' : ''}">${r.not_given_today}</td>
+      <td style="padding:8px 6px;font-weight:800">${r.stock}</td>
+      <td style="padding:8px 6px">${
+        r.status === 'OUT' ? '<span class="badge" style="background:#fbdcda;color:var(--danger)">OUT — ORDER NOW</span>'
+        : r.status === 'REORDER' ? '<span class="badge waiting">LOW — REORDER</span>'
+        : '<span class="badge dispensed">IN STOCK</span>'
+      }</td>
+    </tr>`).join('');
+}
+
+async function loadAll() {
+  showSite('siteBanner');
+  const s = await api('/api/stats');
+  document.getElementById('stats').innerHTML = `
+    <div class="stat"><div class="n">${s.total || 0}</div><div class="l">Patients</div></div>
+    <div class="stat"><div class="n">${s.waiting || 0}</div><div class="l">Waiting</div></div>
+    <div class="stat"><div class="n">${s.prescribed || 0}</div><div class="l">At pharmacy</div></div>
+    <div class="stat"><div class="n">${s.dispensed || 0}</div><div class="l">Completed</div></div>`;
+  await renderStock();
+  await renderSiteSelector();
+  for (const t of Object.keys(LIST_BOX)) await renderList(t);
+  await renderMeds();
+}
+
+document.getElementById('exportCsv').onclick = () => {
+  location.href = '/api/export.csv?date=' + encodeURIComponent(document.getElementById('expDate').value || todayStr());
+};
+document.getElementById('backupDb').onclick = () => { location.href = '/api/backup.db'; };
+document.getElementById('medReport').onclick = () => {
+  location.href = '/api/medicine-report.csv?date=' + encodeURIComponent(document.getElementById('expDate').value || todayStr());
+};
+</script>
+</body>
+</html>
