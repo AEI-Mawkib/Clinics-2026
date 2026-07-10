@@ -1,5 +1,5 @@
 # Clinics-2026
-This is an offline mode clinic setup with limited to none internet access. This setup supports running 3 tablets at a minimum, which can scale up to an unlimited number. The project description can be found in the README.md
+This is an offline mode clinic setup with limited or no internet access. This setup supports running 3 tablets at a minimum, scaling up to an unlimited number. The project description can be found in the README.md
 
 # Mawkib Clinic — offline patient system for the Arbaeen walk
 
@@ -10,10 +10,10 @@ and open source, and one button at the end of the shift to export the Excel file
 ```
  ┌────────────┐        WiFi hotspot (no internet)        ┌────────────┐
  │  Tablet 1  │  ───────────────┐        ┌─────────────  │  Tablet 3  │
- │   INTAKE   │                 ▼        ▼               │  PHARMACY  │
+ │   INTAKE   │                 ▼        ▼               │  Doctor    │
  └────────────┘          ┌──────────────────┐            └────────────┘
                          │     Tablet 2     │
-                         │ DOCTOR + SERVER  │  ← runs the app + database
+                         │Pharmacy + SERVER │  ← runs the app + database
                          └──────────────────┘
 ```
 
