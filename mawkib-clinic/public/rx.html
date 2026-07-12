@@ -1,0 +1,212 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Patient Instructions · Mawkib Clinic</title>
+<style>
+  /* Standalone page: patients may view this on their own phone via the clinic hotspot,
+     and the pharmacist prints it on a Bluetooth thermal printer. Self-contained CSS. */
+  * { box-sizing: border-box; }
+  body { margin: 0; background: #faf9f6; color: #16181c;
+         font-family: system-ui, "Segoe UI", Roboto, "Noto Sans", "Noto Naskh Arabic", "Noto Nastaliq Urdu", sans-serif;
+         font-size: 18px; line-height: 1.5; }
+  header { background: #16181c; color: #fff; padding: 12px 16px; display: flex; align-items: center; gap: 12px; }
+  header img { height: 48px; background: #fff; border-radius: 8px; padding: 3px 8px; }
+  header .t { font-weight: 800; font-size: 18px; }
+  header .u { font-size: 12px; color: #9fc1e8; }
+  main { max-width: 640px; margin: 0 auto; padding: 14px; }
+  .langs { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 14px; }
+  .langs button { flex: 1; min-width: 110px; font-size: 18px; font-weight: 800; padding: 12px;
+                  border: 2px solid #d8d5cd; border-radius: 10px; background: #fff; cursor: pointer; }
+  .langs button.on { background: #0e5c3f; color: #fff; border-color: #0e5c3f; }
+  .sheet { background: #fff; border: 1px solid #d8d5cd; border-radius: 12px; padding: 16px; }
+  .sheet h1 { font-size: 20px; margin: 0 0 10px; }
+  .kv { margin: 3px 0; }
+  .kv b { display: inline-block; min-width: 130px; }
+  .medbox { border: 2px solid #16181c; border-radius: 10px; padding: 10px 12px; margin: 10px 0; }
+  .medbox .mn { font-weight: 900; font-size: 19px; }
+  .medbox .mi { margin-top: 4px; }
+  .medbox .ng { color: #b3261e; font-weight: 800; }
+  .totalbar { background: #e7f0ec; color: #0e5c3f; font-weight: 900; padding: 10px 12px;
+              border-radius: 10px; margin-top: 10px; font-size: 19px; }
+  .foot { color: #5c6370; font-size: 15px; margin-top: 12px; }
+  .printbtn { display: block; width: 100%; margin-top: 14px; font-size: 20px; font-weight: 800;
+              padding: 14px; border: none; border-radius: 12px; background: #16181c; color: #fff; }
+  [dir=rtl] .kv b { min-width: 0; margin-left: 8px; }
+  @media print {
+    header, .langs, .printbtn, .foot .noprint { display: none !important; }
+    body { background: #fff; font-size: 14px; }
+    main { max-width: 76mm; padding: 0; }         /* fits 80mm thermal roll */
+    .sheet { border: none; padding: 0; }
+    .medbox { border: 1px solid #000; }
+    .totalbar { background: none; border-top: 2px solid #000; border-radius: 0; }
+  }
+</style>
+</head>
+<body>
+<header>
+  <img src="/logo.png" alt="Azadar e Imam Clinic" onerror="this.style.display='none'">
+  <div><div class="t">Azadar e Imam Clinic</div><div class="u">azadareimam.org</div></div>
+</header>
+<main>
+  <div class="langs" id="langs">
+    <button data-l="en">English</button>
+    <button data-l="ur">اردو</button>
+    <button data-l="fa">فارسی</button>
+    <button data-l="ar">العربية</button>
+  </div>
+  <div class="sheet" id="sheet"><p>Loading…</p></div>
+  <button class="printbtn" onclick="window.print()" id="printBtn">🖨 Print</button>
+  <p class="foot"><span class="noprint" id="footNote">Show this to the patient in their language, or print it.</span></p>
+</main>
+
+<script>
+const T = {
+  en: { dir: 'ltr', title: 'Your Medicine Instructions', name: 'Name', age: 'Age', yrs: 'years',
+        gender: 'Gender', male: 'Male', female: 'Female', other: 'Other',
+        nationality: 'Nationality', complaint: 'Complaint', allergies: 'Allergies',
+        pharmacist: 'Pharmacist', intakeBy: 'Registered by', print: '🖨 Print', loading: 'Loading…',
+        showNote: 'Show this to the patient in their language, or print it.',
+        token: 'Token', date: 'Date', doctor: 'Doctor', vitals: 'Vitals',
+        bp: 'Blood pressure', temp: 'Temperature', ht: 'Height', wt: 'Weight',
+        meds: 'Your medicines', perDose: 'each time', total: 'Total', units: 'units',
+        freq: { 'once a day': 'once a day', 'twice a day': 'twice a day (morning & evening)',
+                'thrice a day': 'three times a day', 'hourly': 'every hour' },
+        days: n => `for ${n} day${n > 1 ? 's' : ''}`,
+        take: n => `Take ${n} each time`,
+        notGiven: 'NOT given (out of stock) — ask at another clinic',
+        notes: "Doctor's advice", wound: 'Wound care done', by: 'by',
+        totalLine: (m, u) => `Total: ${m} medicine${m > 1 ? 's' : ''}, ${u} units`,
+        foot: 'If your condition gets worse, please come back to the clinic.' },
+  ur: { dir: 'rtl', title: 'آپ کی دوا کی ہدایات', name: 'نام', age: 'عمر', yrs: 'سال',
+        gender: 'جنس', male: 'مرد', female: 'خاتون', other: 'دیگر',
+        nationality: 'قومیت', complaint: 'شکایت', allergies: 'الرجی',
+        pharmacist: 'فارماسسٹ', intakeBy: 'رجسٹریشن کرنے والا', print: '🖨 پرنٹ کریں', loading: 'لوڈ ہو رہا ہے…',
+        showNote: 'یہ مریض کو ان کی زبان میں دکھائیں یا پرنٹ کریں۔',
+        token: 'ٹوکن', date: 'تاریخ', doctor: 'ڈاکٹر', vitals: 'طبی پیمائش',
+        bp: 'بلڈ پریشر', temp: 'درجہ حرارت', ht: 'قد', wt: 'وزن',
+        meds: 'آپ کی دوائیں', perDose: 'ہر بار', total: 'کل', units: 'عدد',
+        freq: { 'once a day': 'دن میں ایک بار', 'twice a day': 'دن میں دو بار (صبح اور شام)',
+                'thrice a day': 'دن میں تین بار', 'hourly': 'ہر گھنٹے' },
+        days: n => `${n} دن تک`,
+        take: n => `ہر بار ${n} لیں`,
+        notGiven: 'نہیں دی گئی (اسٹاک ختم) — کسی اور کلینک سے پوچھیں',
+        notes: 'ڈاکٹر کا مشورہ', wound: 'زخم کی مرہم پٹی کی گئی', by: 'بذریعہ',
+        totalLine: (m, u) => `کل: ${m} دوائیں، ${u} عدد`,
+        foot: 'اگر طبیعت زیادہ خراب ہو تو براہ کرم کلینک واپس آئیں۔' },
+  fa: { dir: 'rtl', title: 'دستور مصرف داروهای شما', name: 'نام', age: 'سن', yrs: 'سال',
+        gender: 'جنسیت', male: 'مرد', female: 'زن', other: 'دیگر',
+        nationality: 'ملیت', complaint: 'شکایت', allergies: 'حساسیت دارویی',
+        pharmacist: 'داروساز', intakeBy: 'ثبت‌کننده', print: '🖨 چاپ', loading: 'در حال بارگذاری…',
+        showNote: 'این را به زبان بیمار به او نشان دهید یا چاپ کنید.',
+        token: 'شماره نوبت', date: 'تاریخ', doctor: 'پزشک', vitals: 'علائم حیاتی',
+        bp: 'فشار خون', temp: 'دمای بدن', ht: 'قد', wt: 'وزن',
+        meds: 'داروهای شما', perDose: 'هر بار', total: 'مجموع', units: 'عدد',
+        freq: { 'once a day': 'یک بار در روز', 'twice a day': 'دو بار در روز (صبح و شب)',
+                'thrice a day': 'سه بار در روز', 'hourly': 'هر ساعت' },
+        days: n => `به مدت ${n} روز`,
+        take: n => `هر بار ${n} عدد مصرف کنید`,
+        notGiven: 'داده نشد (موجودی تمام شده) — از درمانگاه دیگری بگیرید',
+        notes: 'توصیه پزشک', wound: 'پانسمان انجام شد', by: 'توسط',
+        totalLine: (m, u) => `مجموع: ${m} دارو، ${u} عدد`,
+        foot: 'اگر حال شما بدتر شد، لطفاً به درمانگاه برگردید.' },
+  ar: { dir: 'rtl', title: 'تعليمات الدواء الخاصة بك', name: 'الاسم', age: 'العمر', yrs: 'سنة',
+        gender: 'الجنس', male: 'ذكر', female: 'أنثى', other: 'أخرى',
+        nationality: 'الجنسية', complaint: 'الشكوى', allergies: 'الحساسية',
+        pharmacist: 'الصيدلي', intakeBy: 'سُجّل بواسطة', print: '🖨 طباعة', loading: 'جارٍ التحميل…',
+        showNote: 'اعرض هذه الصفحة للمريض بلغته أو اطبعها.',
+        token: 'رقم الدور', date: 'التاريخ', doctor: 'الطبيب', vitals: 'العلامات الحيوية',
+        bp: 'ضغط الدم', temp: 'درجة الحرارة', ht: 'الطول', wt: 'الوزن',
+        meds: 'أدويتك', perDose: 'في كل مرة', total: 'المجموع', units: 'وحدة',
+        freq: { 'once a day': 'مرة واحدة في اليوم', 'twice a day': 'مرتين في اليوم (صباحاً ومساءً)',
+                'thrice a day': 'ثلاث مرات في اليوم', 'hourly': 'كل ساعة' },
+        days: n => `لمدة ${n} ${n > 2 && n < 11 ? 'أيام' : 'يوم'}`,
+        take: n => `خذ ${n} في كل مرة`,
+        notGiven: 'لم يُصرف (نفد المخزون) — اسأل في عيادة أخرى',
+        notes: 'نصيحة الطبيب', wound: 'تمت العناية بالجرح', by: 'بواسطة',
+        totalLine: (m, u) => `المجموع: ${m} أدوية، ${u} وحدة`,
+        foot: 'إذا ساءت حالتك، يرجى العودة إلى العيادة.' },
+};
+
+const LANG_BY_NAME = { english: 'en', urdu: 'ur', farsi: 'fa', persian: 'fa', arabic: 'ar' };
+const id = (location.pathname.match(/\/rx\/(\d+)/) || [])[1];
+let patient = null;
+let lang = new URLSearchParams(location.search).get('lang') || 'en';
+
+function esc(s) {
+  return String(s ?? '').replace(/[&<>"']/g, c =>
+    ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+
+function render() {
+  const t = T[lang] || T.en;
+  const p = patient;
+  const sheet = document.getElementById('sheet');
+  sheet.dir = t.dir;
+  document.querySelectorAll('#langs button').forEach(b => b.classList.toggle('on', b.dataset.l === lang));
+  document.getElementById('printBtn').textContent = t.print;
+  document.getElementById('footNote').textContent = t.showNote;
+  document.title = t.title + ' · Azadar e Imam Clinic';
+  if (!p) { sheet.innerHTML = '<p>Not found.</p>'; return; }
+
+  const vit = [
+    p.bp ? `<div class="kv"><b>${t.bp}:</b> ${esc(p.bp)}</div>` : '',
+    p.temperature ? `<div class="kv"><b>${t.temp}:</b> ${esc(p.temperature)}</div>` : '',
+    p.height ? `<div class="kv"><b>${t.ht}:</b> ${esc(p.height)}</div>` : '',
+    p.weight ? `<div class="kv"><b>${t.wt}:</b> ${esc(p.weight)}</div>` : '',
+  ].join('');
+
+  const items = (p.items || []);
+  const givenItems = items.filter(i => i.dispensed);
+  const totalUnits = givenItems.reduce((a, i) => a + (i.qty || 0), 0);
+
+  const genderWord = p.gender === 'M' ? t.male : p.gender === 'F' ? t.female : p.gender ? t.other : '';
+  sheet.innerHTML = `
+    <h1>${t.title}</h1>
+    ${p.doctor_name ? `<div class="kv"><b>${t.doctor}:</b> ${esc(p.doctor_name)}</div>` : ''}
+    ${p.pharmacist_name ? `<div class="kv"><b>${t.pharmacist}:</b> ${esc(p.pharmacist_name)}</div>` : ''}
+    ${p.intake_by ? `<div class="kv"><b>${t.intakeBy}:</b> ${esc(p.intake_by)}</div>` : ''}
+    <hr style="border:none;border-top:1px solid #d8d5cd">
+    <div class="kv"><b>${t.name}:</b> ${esc(p.name)}</div>
+    ${p.age ? `<div class="kv"><b>${t.age}:</b> ${p.age} ${t.yrs}</div>` : ''}
+    ${genderWord ? `<div class="kv"><b>${t.gender}:</b> ${genderWord}</div>` : ''}
+    ${p.nationality ? `<div class="kv"><b>${t.nationality}:</b> ${esc(p.nationality)}</div>` : ''}
+    ${p.complaint ? `<div class="kv"><b>${t.complaint}:</b> ${esc(p.complaint)}</div>` : ''}
+    ${p.allergies ? `<div class="kv" style="color:#b3261e"><b>${t.allergies}:</b> ${esc(p.allergies)}</div>` : ''}
+    <div class="kv"><b>${t.token}:</b> ${p.token} &nbsp; <b>${t.date}:</b> ${esc(p.visit_date)}</div>
+    ${vit ? `<h1 style="margin-top:14px">${t.vitals}</h1>${vit}` : ''}
+    <h1 style="margin-top:14px">${t.meds}</h1>
+    ${items.map(it => it.dispensed ? `
+      <div class="medbox">
+        <div class="mn">${esc(it.name)}</div>
+        <div class="mi">${t.take(it.dose_qty)} · ${t.freq[it.frequency] || esc(it.frequency || '')} · ${t.days(it.days || 1)}</div>
+        <div class="mi"><b>${t.total}: ${it.qty} ${t.units}</b></div>
+      </div>` : `
+      <div class="medbox">
+        <div class="mn">${esc(it.name)}</div>
+        <div class="mi ng">${t.notGiven}</div>
+      </div>`).join('') || '<p>—</p>'}
+    <div class="totalbar">${t.totalLine(givenItems.length, totalUnits)}</div>
+    ${p.notes ? `<h1 style="margin-top:14px">${t.notes}</h1><p>${esc(p.notes)}</p>` : ''}
+    ${p.wound_care ? `<div class="kv" style="margin-top:10px"><b>${t.wound}:</b> ${esc(p.wound_care)}${p.wound_care_by ? ' — ' + t.by + ' ' + esc(p.wound_care_by) : ''}</div>` : ''}
+    <p class="foot">${t.foot}</p>`;
+}
+
+document.querySelectorAll('#langs button').forEach(b => b.onclick = () => { lang = b.dataset.l; render(); });
+
+fetch('/api/patients/' + id)
+  .then(r => r.json())
+  .then(p => {
+    patient = p;
+    // default to the language recorded at intake, unless the QR specified one
+    if (!new URLSearchParams(location.search).get('lang') && p.language) {
+      const code = LANG_BY_NAME[String(p.language).toLowerCase()];
+      if (code) lang = code;
+    }
+    render();
+  })
+  .catch(() => { document.getElementById('sheet').innerHTML = '<p>Could not load.</p>'; });
+</script>
+</body>
+</html>

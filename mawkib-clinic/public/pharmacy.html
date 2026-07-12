@@ -1,0 +1,277 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pharmacy, Wound Care &amp; Dispatch · Mawkib Clinic</title>
+<link rel="stylesheet" href="/style.css">
+</head>
+<body class="role-pharmacy">
+<header class="bar">
+  <img class="logo" src="/logo.png" alt="Azadar e Imam Clinic" onerror="this.style.display='none'">
+  <div><h1>Pharmacy, Wound Care &amp; Dispatch</h1><div class="sub" id="siteBanner"></div><div class="weburl">azadareimam.org</div></div>
+  <div class="clockbox" id="liveClock"></div>
+  <a class="home" href="/">Menu</a>
+</header>
+<main>
+  <div class="card staff-card" style="padding:12px 18px">
+    <label for="pharmSel" style="margin-top:0">💊 Pharmacist on this shift</label>
+    <select id="pharmSel"><option value="">— select pharmacist —</option></select>
+    <p class="warn" id="pharmWarn">Select the pharmacist to unlock the form below.</p>
+    <div class="shift-badge" id="pharmShift"></div>
+    <p class="note" style="margin-bottom:0">Names are managed on the Admin page. Your choice is remembered on this tablet.</p>
+  </div>
+
+  <div id="listView">
+    <h2>Ready to dispense</h2>
+    <div id="ready"></div>
+    <h2>Completed today</h2>
+    <div id="doneList"></div>
+  </div>
+
+  <div id="detailView" style="display:none">
+    <button class="btn secondary small" id="back">&larr; Back</button>
+    <div class="card" id="pInfo" style="margin-top:12px"></div>
+    <div class="card">
+      <h2 style="margin-top:0">Medicines to give</h2>
+      <div id="rxSummary" class="token" style="min-width:0;width:100%;height:auto;font-size:20px;padding:12px;margin-bottom:12px"></div>
+      <div id="rxItems"></div>
+
+      <div id="woundWrap">
+      <label style="margin-top:20px">Wound care done here (tap all that apply)</label>
+      <div class="pills" id="woundCare">
+        <button type="button" class="pill">Wound cleaned</button>
+        <button type="button" class="pill">Bandage / dressing applied</button>
+        <button type="button" class="pill">Blister drained (popped)</button>
+        <button type="button" class="pill">Blister padded / protected</button>
+      </div>
+      <label for="woundBy">Performed by (pharmacist or nursing assistant)</label>
+      <select id="woundBy"><option value="">— select who performed it —</option></select>
+
+      </div><!-- /woundWrap -->
+      <div style="margin-top:18px" id="dispenseWrap">
+        <button class="btn" id="dispense">Medicines handed over ✓</button>
+      </div>
+    </div>
+
+    <div class="card" id="qrCard">
+      <h2 style="margin-top:0">Patient instructions — QR &amp; print</h2>
+      <p class="note">The patient scans this QR with their phone (connected to the clinic WiFi)
+        to read their medicines and dosage in English, Urdu, Farsi or Arabic. Or open the page
+        here to show/print it.</p>
+      <div id="qrBox" style="text-align:center;padding:6px 0"></div>
+      <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:8px">
+        <a class="btn small secondary" id="openRx" href="#" target="_blank">Open instructions page</a>
+        <button class="btn small" id="printRx">🖨 Print instructions</button>
+      </div>
+    </div>
+  </div>
+</main>
+
+<script src="/app.js"></script>
+<script src="/qrcode.js"></script>
+<script>
+let currentId = null;
+
+async function loadWoundPerformers(selected) {
+  const [pharms, nurses] = await Promise.all([api('/api/list/pharmacist'), api('/api/list/nurse')]);
+  const sel = document.getElementById('woundBy');
+  const opt = (n, tag) => `<option value="${esc(n)}" ${n === selected ? 'selected' : ''}>${esc(n)}${tag}</option>`;
+  sel.innerHTML = '<option value="">— select who performed it —</option>'
+    + pharms.map(x => opt(x.name, ' (pharmacist)')).join('')
+    + nurses.map(x => opt(x.name, ' (nursing asst.)')).join('');
+}
+
+async function loadPharmacists() {
+  const list = await api('/api/list/pharmacist');
+  const sel = document.getElementById('pharmSel');
+  const saved = localStorage.getItem('pharmacistName') || '';
+  sel.innerHTML = '<option value="">— select pharmacist —</option>' +
+    list.map(d => `<option ${d.name === saved ? 'selected' : ''}>${esc(d.name)}</option>`).join('');
+  sel.onchange = async () => {
+    localStorage.setItem('pharmacistName', sel.value);
+    await api('/api/shift', { method: 'POST', body: { role: 'pharmacist', name: sel.value } });
+    gate(); updateShiftBadge('pharmacist', '.staff-card', 'pharmShift');
+  };
+  if (sel.value) await api('/api/shift', { method: 'POST', body: { role: 'pharmacist', name: sel.value } });
+  gate();
+}
+
+/* lock everything until a pharmacist is chosen; also lock when the shift passes 12 hours */
+function gate() {
+  const name = document.getElementById('pharmSel').value;
+  const expired = !!(window._shiftExpired && window._shiftExpired.pharmacist);
+  const locked = !name || expired;
+  document.getElementById('listView').classList.toggle('gate-off', locked);
+  document.getElementById('detailView').classList.toggle('gate-off', locked);
+  const warn = document.getElementById('pharmWarn');
+  warn.style.display = locked ? 'block' : 'none';
+  warn.textContent = !name
+    ? 'Select the pharmacist to unlock the form below.'
+    : 'Shift is over 12 hours — select the relief pharmacist to continue.';
+  document.body.classList.toggle('page-locked', !name);
+  document.body.classList.toggle('shift-expired', !!name && expired);
+}
+window._gate = gate;
+
+async function refresh() {
+  showSite('siteBanner');
+  updateShiftBadge('pharmacist', '.staff-card', 'pharmShift');
+  const list = await api('/api/patients?status=all');
+  const ready = list.filter(p => p.status === 'prescribed');
+  const done = list.filter(p => p.status === 'dispensed');
+  document.getElementById('ready').innerHTML = ready.length
+    ? ready.map(p => patientRow(p, p.meds ? `<div class="meta">💊 ${esc(p.meds)}</div>` : '')).join('')
+    : '<div class="empty">No prescriptions waiting. They appear here as soon as the doctor saves.</div>';
+  document.getElementById('doneList').innerHTML = done.length
+    ? done.slice().reverse().map(p => patientRow(p)).join('')
+    : '<div class="empty">Nothing dispensed yet today.</div>';
+  document.querySelectorAll('#ready .row, #doneList .row').forEach(r => r.onclick = () => openPatient(Number(r.dataset.id)));
+}
+
+async function openPatient(id) {
+  if (!document.getElementById('pharmSel').value) return toast('Select the pharmacist on shift first', 'err');
+  if (window._shiftExpired && window._shiftExpired.pharmacist) return toast('Shift over 12 hours — select the relief pharmacist', 'err');
+  currentId = id;
+  window._pausePoll = true;
+  const p = await api('/api/patients/' + id);
+
+  const done = p.status === 'dispensed';
+  const intakeLine = [
+    p.age ? p.age + ' yrs' : '', p.gender || '', p.nationality || '',
+    p.language ? '🗣 ' + p.language : ''].filter(Boolean).join(' · ');
+  document.getElementById('pInfo').innerHTML = `
+    <div class="staffline">
+      ${p.doctor_name ? `<div class="who1">👨‍⚕️ Doctor: ${esc(p.doctor_name)}</div>` : ''}
+      ${done && p.pharmacist_name ? `<div class="who2">💊 Dispensed by: ${esc(p.pharmacist_name)}</div>` : ''}
+      ${p.intake_by ? `<div class="who2">📝 Intake by: ${esc(p.intake_by)}</div>` : ''}
+    </div>
+    <div style="display:flex;gap:14px;align-items:center">
+      <div class="token">${p.token}</div>
+      <div>
+        <div style="font-size:22px;font-weight:900">${esc(p.name)}</div>
+        <div class="note">${intakeLine}</div>
+      </div>
+    </div>
+    ${p.complaint ? `<p><b>Complaint:</b> ${esc(p.complaint)}</p>` : ''}
+    ${p.allergies ? `<p style="color:var(--danger)"><b>⚠ Allergies:</b> ${esc(p.allergies)}</p>` : ''}
+    ${[p.bp ? 'BP ' + esc(p.bp) : '', p.temperature ? 'Temp ' + esc(p.temperature) : '',
+       p.height ? 'Ht ' + esc(p.height) : '', p.weight ? 'Wt ' + esc(p.weight) : '']
+       .filter(Boolean).length
+       ? `<p><b>Vitals:</b> ${[p.bp ? 'BP ' + esc(p.bp) : '', p.temperature ? 'Temp ' + esc(p.temperature) : '',
+          p.height ? 'Ht ' + esc(p.height) : '', p.weight ? 'Wt ' + esc(p.weight) : ''].filter(Boolean).join(' · ')}</p>` : ''}
+    ${p.notes ? `<p><b>Doctor notes:</b> ${esc(p.notes)}</p>` : ''}
+    ${done && p.wound_care ? `<p><b>Wound care:</b> ${esc(p.wound_care)}${p.wound_care_by ? ' — by ' + esc(p.wound_care_by) : ''}</p>` : ''}`;
+
+  document.getElementById('woundWrap').style.display = done ? 'none' : 'block';
+  document.getElementById('dispenseWrap').style.display = done ? 'none' : 'block';
+  document.querySelector('#detailView .card h2').textContent = done
+    ? `Prescription details — ${(p.items || []).length} medicine${(p.items || []).length === 1 ? '' : 's'}`
+    : 'Medicines to give';
+  document.getElementById('rxItems').innerHTML = done
+    ? ((p.items && p.items.length)
+        ? p.items.map(it => `
+          <div class="med ${it.dispensed ? 'checked' : 'stk-red'}">
+            <div class="medname">${esc(it.name)}
+              <div class="note" style="font-weight:400">${esc(it.dosage || '')}</div>
+            </div>
+            <div style="font-weight:800">${it.dispensed ? 'given ×' + it.qty : 'NOT GIVEN'}</div>
+          </div>`).join('')
+        : '<div class="empty">No medicines — advice / wound care only.</div>')
+    : (p.items && p.items.length)
+    ? p.items.map(it => {
+        const alreadyDone = p.status === 'dispensed';
+        const prescribed = it.qty && it.qty > 0 ? it.qty : 1;   // doctor's total
+        const zero = it.stock <= 0;                              // cannot dispense at all
+        const short = !zero && it.stock < prescribed;            // fewer on the shelf than prescribed
+        const checked = zero ? false : (alreadyDone ? !!it.dispensed : true);
+        const qty = short ? it.stock : prescribed;               // pre-fill what can actually be given
+        const stockHint = zero
+          ? '<span style="color:var(--danger);font-weight:800">OUT OF STOCK — cannot dispense</span>'
+          : short
+            ? `<span style="color:var(--danger);font-weight:800">only ${it.stock} in stock — prescribed ${prescribed}</span>`
+            : `in stock: ${it.stock}`;
+        const rowColor = (zero || short) ? 'stk-red' : stockClass(it.stock, it.full_stock);
+        return `
+        <div class="med ${rowColor} ${checked ? 'checked' : ''} ${zero ? 'blocked' : ''}" data-item="${it.item_id}" data-zero="${zero ? 1 : 0}">
+          <input type="checkbox" ${checked ? 'checked' : ''} ${zero ? 'disabled' : ''} title="Untick if not given (e.g. out of stock)">
+          <div class="medname">${esc(it.name)}
+            <div class="note" style="font-weight:400">${esc(it.dosage || '')} · ${stockHint}</div>
+          </div>
+          <input class="dose qtyIn" type="number" inputmode="numeric" min="1" max="${Math.max(it.stock,1)}" value="${qty}"
+                 ${zero ? 'disabled' : ''} style="display:block;width:90px" title="Units given">
+        </div>`;
+      }).join('')
+      + '<p class="note">Tick = handed over (enter how many units). Untick anything you could not give — it goes on the stock-out report.</p>'
+    : '<div class="empty">Doctor saved no medicines — advice only. Mark as done.</div>';
+  document.querySelectorAll('#rxItems .med input[type=checkbox]').forEach(cb => {
+    cb.onchange = () => cb.closest('.med').classList.toggle('checked', cb.checked);
+  });
+
+  // prescription summary: number of medications + total units to dispense
+  const nMeds = (p.items || []).length;
+  const totalUnits = (p.items || []).reduce((a, it) => a + (Number(it.qty) || 0), 0);
+  document.getElementById('rxSummary').textContent = nMeds
+    ? `${nMeds} medication${nMeds > 1 ? 's' : ''} · ${totalUnits} units total to dispense`
+    : 'No medications — advice only';
+
+  // wound care: restore previous state if re-opened
+  const prevWound = (p.wound_care || '').split(',').map(x => x.trim()).filter(Boolean);
+  document.querySelectorAll('#woundCare .pill').forEach(b => {
+    b.classList.toggle('on', prevWound.includes(b.textContent));
+    b.onclick = () => b.classList.toggle('on');
+  });
+  await loadWoundPerformers(p.wound_care_by || document.getElementById('pharmSel').value || '');
+
+  // QR code for the patient's multilingual instruction page
+  const rxUrl = location.origin + '/rx/' + p.id;
+  try {
+    const qr = qrcode(0, 'M');
+    qr.addData(rxUrl);
+    qr.make();
+    document.getElementById('qrBox').innerHTML = qr.createSvgTag({ cellSize: 5, margin: 2 })
+      + `<div class="note" style="margin-top:6px">${rxUrl}</div>`;
+  } catch (e) { document.getElementById('qrBox').innerHTML = '<div class="note">' + rxUrl + '</div>'; }
+  document.getElementById('openRx').href = rxUrl;
+  document.getElementById('printRx').onclick = () => {
+    const w = window.open(rxUrl, '_blank');
+    if (w) w.addEventListener('load', () => setTimeout(() => w.print(), 600));
+  };
+
+  document.getElementById('listView').style.display = 'none';
+  document.getElementById('detailView').style.display = 'block';
+  window.scrollTo(0, 0);
+}
+
+document.getElementById('back').onclick = () => {
+  document.getElementById('detailView').style.display = 'none';
+  document.getElementById('listView').style.display = 'block';
+  window._pausePoll = false;
+  refresh();
+};
+
+document.getElementById('dispense').onclick = async () => {
+  const pharm = document.getElementById('pharmSel').value;
+  if (!pharm) return toast('Select the pharmacist on shift (top of page)', 'err');
+  try {
+    const items = [...document.querySelectorAll('#rxItems .med')].map(m => ({
+      item_id: Number(m.dataset.item),
+      dispensed: m.dataset.zero === '1' ? false : m.querySelector('input[type=checkbox]').checked,
+      qty: Number(m.querySelector('.qtyIn').value) || 1,
+    }));
+    const woundCare = [...document.querySelectorAll('#woundCare .pill.on')].map(b => b.textContent).join(', ');
+    const woundBy = document.getElementById('woundBy').value.trim() || (woundCare ? pharm : '');
+    await api('/api/patients/' + currentId + '/dispense', { method: 'POST',
+      body: { pharmacist_name: pharm, items, wound_care: woundCare, wound_care_by: woundBy } });
+    toast('Dispensed — instructions & QR ready below', 'ok');
+    await openPatient(currentId);   // switch straight to the summary + QR view
+    window._pausePoll = true;
+  } catch (e) { toast(e.message, 'err'); }
+};
+
+loadPharmacists();
+guardNav('110786');
+poll(refresh);
+</script>
+</body>
+</html>
