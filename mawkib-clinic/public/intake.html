@@ -1,0 +1,172 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Patient Intake Form · Mawkib Clinic</title>
+<link rel="stylesheet" href="/style.css">
+</head>
+<body class="role-intake">
+<header class="bar">
+  <img class="logo" src="/logo.png" alt="Azadar e Imam Clinic" onerror="this.style.display='none'">
+  <div><h1>Patient Intake Form</h1><div class="sub" id="siteBanner"></div><div class="weburl">azadareimam.org</div></div>
+  <div class="clockbox" id="liveClock"></div>
+  <a class="home" href="/">Menu</a>
+</header>
+<main>
+  <div class="card staff-card" style="padding:12px 18px">
+    <label for="intakeSel" style="margin-top:0">📝 Intake coordinator on this shift</label>
+    <select id="intakeSel"><option value="">— select coordinator —</option></select>
+    <p class="warn" id="intakeWarn">Select the intake coordinator to unlock the form below.</p>
+    <div class="shift-badge" id="intakeShift"></div>
+    <p class="note" style="margin-bottom:0">Names are managed on the Admin page. Your choice is remembered on this tablet.</p>
+  </div>
+
+  <div class="stat-grid" id="statsBar" style="margin-bottom:12px"></div>
+  <div class="card" style="padding:12px" id="stageCard"><div id="stageGraph"></div></div>
+
+  <div id="intakeBody">
+  <div class="card">
+    <label for="name">Patient name *</label>
+    <input id="name" type="text" autocomplete="off" placeholder="Full name">
+
+    <label>Age &amp; gender</label>
+    <div style="display:flex;gap:10px">
+      <input id="age" type="number" inputmode="numeric" placeholder="Age" style="width:38%">
+      <div class="pills" id="gender" style="margin-top:0">
+        <button type="button" class="pill" data-v="M">Male</button>
+        <button type="button" class="pill" data-v="F">Female</button>
+        <button type="button" class="pill" data-v="Other">Other</button>
+      </div>
+    </div>
+
+    <label>Nationality — tap one</label>
+    <div class="pills" id="nationality"></div>
+
+    <label>Language spoken — tap one</label>
+    <div class="pills" id="language"></div>
+
+    <label>Complaint — tap all that apply</label>
+    <div class="pills" id="complaints"></div>
+    <input id="complaintOther" type="text" placeholder="Other complaint (optional)" style="margin-top:10px">
+
+    <label for="allergies">Allergies (optional)</label>
+    <input id="allergies" type="text" placeholder="e.g. penicillin">
+
+    <div style="margin-top:18px">
+      <button class="btn" id="save">Register patient</button>
+    </div>
+  </div>
+
+  <h2>Today's queue</h2>
+  <div id="queue"></div>
+  </div><!-- /intakeBody -->
+</main>
+
+<script src="/app.js"></script>
+<script>
+let gender = '', nationality = '';
+
+async function loadCoordinators() {
+  const list = await api('/api/list/intake');
+  const sel = document.getElementById('intakeSel');
+  const saved = localStorage.getItem('intakeName') || '';
+  sel.innerHTML = '<option value="">— select coordinator —</option>' +
+    list.map(d => `<option ${d.name === saved ? 'selected' : ''}>${esc(d.name)}</option>`).join('');
+  sel.onchange = async () => {
+    localStorage.setItem('intakeName', sel.value);
+    await api('/api/shift', { method: 'POST', body: { role: 'intake', name: sel.value } });
+    gate(); updateShiftBadge('intake', '.staff-card', 'intakeShift');
+  };
+  if (sel.value) await api('/api/shift', { method: 'POST', body: { role: 'intake', name: sel.value } });
+  gate();
+}
+
+/* lock the intake form until a coordinator is chosen; lock at 12 hours too */
+function gate() {
+  const name = document.getElementById('intakeSel').value;
+  const expired = !!(window._shiftExpired && window._shiftExpired.intake);
+  const locked = !name || expired;
+  document.getElementById('intakeBody').classList.toggle('gate-off', locked);
+  const warn = document.getElementById('intakeWarn');
+  warn.style.display = locked ? 'block' : 'none';
+  warn.textContent = !name
+    ? 'Select the intake coordinator to unlock the form below.'
+    : 'Shift is over 12 hours — select the relief coordinator to continue.';
+  document.body.classList.toggle('page-locked', !name);
+  document.body.classList.toggle('shift-expired', !!name && expired);
+}
+window._gate = gate;
+
+document.querySelectorAll('#gender .pill').forEach(b => b.onclick = () => {
+  document.querySelectorAll('#gender .pill').forEach(x => x.classList.remove('on'));
+  b.classList.add('on'); gender = b.dataset.v;
+});
+
+let language = '';
+
+function singlePick(boxId, setter, list) {
+  const box = document.getElementById(boxId);
+  box.innerHTML = list.map(n => `<button type="button" class="pill" data-v="${esc(n.name)}">${esc(n.name)}</button>`).join('');
+  box.querySelectorAll('.pill').forEach(b => b.onclick = () => {
+    box.querySelectorAll('.pill').forEach(x => x.classList.remove('on'));
+    b.classList.add('on'); setter(b.dataset.v);
+  });
+}
+
+async function loadPickers() {
+  const [nats, langs, comps] = await Promise.all([
+    api('/api/list/nationality'), api('/api/list/language'), api('/api/list/complaint')]);
+  singlePick('nationality', v => nationality = v, nats);
+  singlePick('language', v => language = v, langs);
+  const box = document.getElementById('complaints');
+  box.innerHTML = comps.map(c => `<button type="button" class="pill">${esc(c.name)}</button>`).join('');
+  box.querySelectorAll('.pill').forEach(b => b.onclick = () => b.classList.toggle('on'));
+}
+
+document.getElementById('save').onclick = async () => {
+  const name = document.getElementById('name').value.trim();
+  if (!name) return toast('Enter the patient name', 'err');
+  const picked = [...document.querySelectorAll('#complaints .pill.on')].map(b => b.textContent);
+  const other = document.getElementById('complaintOther').value.trim();
+  if (other) picked.push(other);
+  try {
+    const who = document.getElementById('intakeSel').value;
+    if (!who) return toast('Select the intake coordinator first', 'err');
+    const r = await api('/api/patients', { method: 'POST', body: {
+      name,
+      intake_by: who,
+      age: Number(document.getElementById('age').value) || null,
+      gender,
+      nationality,
+      language,
+      complaint: picked.join(', '),
+      allergies: document.getElementById('allergies').value.trim(),
+    }});
+    toast('Registered — TOKEN ' + r.token, 'ok');
+    ['name','age','complaintOther','allergies'].forEach(id => document.getElementById(id).value = '');
+    document.querySelectorAll('.pill.on').forEach(x => x.classList.remove('on'));
+    gender = ''; nationality = ''; language = '';
+    document.getElementById('name').focus();
+    refresh();
+  } catch (e) { toast(e.message, 'err'); }
+};
+
+async function refresh() {
+  showSite('siteBanner');
+  renderStatsBar('statsBar');
+  renderStageGraph('stageGraph');
+  updateShiftBadge('intake', '.staff-card', 'intakeShift');
+  const list = await api('/api/patients?status=all');
+  const q = document.getElementById('queue');
+  q.innerHTML = list.length
+    ? list.slice().reverse().map(p => patientRow(p)).join('')
+    : '<div class="empty">No patients yet today. Register the first one above.</div>';
+}
+loadPickers();
+loadCoordinators();
+guardNav('786110');
+poll(refresh);
+</script>
+</body>
+</html>
