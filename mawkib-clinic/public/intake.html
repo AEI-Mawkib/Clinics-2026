@@ -23,8 +23,6 @@
   </div>
 
   <div class="stat-grid" id="statsBar" style="margin-bottom:12px"></div>
-  <div class="card" style="padding:12px" id="stageCard"><div id="stageGraph"></div></div>
-
   <div id="intakeBody">
   <div class="card">
     <label for="name">Patient name *</label>
@@ -36,7 +34,6 @@
       <div class="pills" id="gender" style="margin-top:0">
         <button type="button" class="pill" data-v="M">Male</button>
         <button type="button" class="pill" data-v="F">Female</button>
-        <button type="button" class="pill" data-v="Other">Other</button>
       </div>
     </div>
 
@@ -155,7 +152,6 @@ document.getElementById('save').onclick = async () => {
 async function refresh() {
   showSite('siteBanner');
   renderStatsBar('statsBar');
-  renderStageGraph('stageGraph');
   updateShiftBadge('intake', '.staff-card', 'intakeShift');
   const list = await api('/api/patients?status=all');
   const q = document.getElementById('queue');
@@ -165,7 +161,7 @@ async function refresh() {
 }
 loadPickers();
 loadCoordinators();
-guardNav('786110');
+guardNav('intake_exit_pin');
 poll(refresh);
 </script>
 </body>

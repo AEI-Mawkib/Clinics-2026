@@ -49,6 +49,7 @@
         <thead>
           <tr style="text-align:left;border-bottom:2px solid var(--line)">
             <th style="padding:8px 6px">Medicine</th>
+            <th style="padding:8px 6px">Country</th>
             <th style="padding:8px 6px">Dispensed</th>
             <th style="padding:8px 6px">Not given</th>
             <th style="padding:8px 6px">Remaining</th>
@@ -82,7 +83,7 @@
     <p class="note">Downloads one file with every patient, note and prescription from the chosen date.
       Opens directly in Excel. Upload it to OneDrive when internet is available.</p>
     <label for="expDate">Date</label>
-    <input id="expDate" type="text" placeholder="YYYY-MM-DD">
+    <select id="expDate"></select>
     <div style="display:flex;gap:10px;margin-top:14px;flex-wrap:wrap">
       <button class="btn small" id="exportCsv">Download shift file (Excel/CSV)</button>
       <button class="btn small secondary" id="backupDb">Download full database backup</button>
@@ -192,7 +193,15 @@ function todayStr() {
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
 }
-document.getElementById('expDate').value = todayStr();
+async function loadDates() {
+  const dates = await api('/api/visit-dates');
+  const sel = document.getElementById('expDate');
+  const t = todayStr();
+  const opts = dates.map(d => `<option value="${d.date}" ${d.date === t ? 'selected' : ''}>${d.date} (${d.n} patients)</option>`);
+  if (!dates.some(d => d.date === t)) opts.unshift(`<option value="${t}" selected>${t} (today)</option>`);
+  opts.push('<option value="all">All days</option>');
+  sel.innerHTML = opts.join('');
+}
 
 /* ---- generic list editor (doctors, pharmacists, nationalities, sites) ---- */
 const LIST_BOX = { doctor: 'doctorList', pharmacist: 'pharmacistList', intake: 'intakeList', nurse: 'nurseList', nationality: 'nationalityList', complaint: 'complaintList', language: 'languageList', site: 'siteList' };
@@ -262,6 +271,10 @@ async function renderMeds() {
       <input class="dose" type="text" value="${esc(m.name)}" style="display:block;flex:1;width:auto">
       <input class="dose stockIn" type="number" inputmode="numeric" min="0" value="${m.stock || 0}"
              style="display:block;width:110px" title="Units in stock">
+      <select class="dose countrySel" title="Originating country" style="display:block;width:130px">
+        ${['', 'Pakistan', 'India', 'Iran', 'Iraq', 'US', 'UK', 'Canada'].map(c =>
+          `<option value="${c}" ${(m.country || '') === c ? 'selected' : ''}>${c || '— country —'}</option>`).join('')}
+      </select>
     </div>`).join('')
     + '<div style="margin-top:14px"><button class="btn" id="saveAllMeds">Save all medicines</button></div>';
   document.getElementById('saveAllMeds').onclick = async () => {
@@ -272,6 +285,7 @@ async function renderMeds() {
         name: row.querySelector('.dose').value.trim(),
         active: row.querySelector('input[type=checkbox]').checked,
         stock: Number(row.querySelector('.stockIn').value) || 0,
+        country: row.querySelector('.countrySel').value,
       }});
     }
     toast('All medicines saved', 'ok');
@@ -320,7 +334,8 @@ async function renderStock() {
   const colors = { OK: 'dispensed', REORDER: 'waiting', OUT: '' };
   document.querySelector('#stockTable tbody').innerHTML = data.rows.map(r => `
     <tr class="${stockClass(r.stock, r.full_stock)}" style="border-bottom:1px solid var(--line);${r.active ? '' : 'opacity:.5'}">
-      <td style="padding:8px 6px;font-weight:700">${esc(r.name)}</td>
+      <td style="padding:8px 6px;font-weight:700">${countryChip(r.country)}${esc(r.name)}</td>
+      <td style="padding:8px 6px">${esc(r.country || '')}</td>
       <td style="padding:8px 6px">${r.dispensed_today}</td>
       <td style="padding:8px 6px;${r.not_given_today > 0 ? 'color:var(--danger);font-weight:800' : ''}">${r.not_given_today}</td>
       <td style="padding:8px 6px;font-weight:800">${r.stock}</td>
@@ -340,6 +355,7 @@ async function loadAll() {
     <div class="stat"><div class="n">${s.waiting || 0}</div><div class="l">Waiting</div></div>
     <div class="stat"><div class="n">${s.prescribed || 0}</div><div class="l">At pharmacy</div></div>
     <div class="stat"><div class="n">${s.dispensed || 0}</div><div class="l">Completed</div></div>`;
+  await loadDates();
   await renderAnalytics();
   await renderStock();
   await renderSiteSelector();

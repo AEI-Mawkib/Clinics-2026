@@ -112,16 +112,20 @@ function startHeaderClock() {
 }
 document.addEventListener('DOMContentLoaded', startHeaderClock);
 
-/* v9: leaving a station screen requires a PIN (kiosk deterrent). */
-function guardNav(pin) {
+/* v9/v11: leaving a station screen requires a PIN (kiosk deterrent).
+   PINs live in config.json on the server tablet — pass 'intake_exit_pin' or 'station_exit_pin'. */
+function guardNav(pinKey) {
   const a = document.querySelector('header a.home');
   if (!a) return;
-  a.addEventListener('click', (e) => {
+  a.addEventListener('click', async (e) => {
     e.preventDefault();
     const v = prompt('Enter PIN to leave this screen');
     if (v === null) return;
-    if (v === pin) location.href = a.getAttribute('href');
-    else toast('Wrong PIN', 'err');
+    try {
+      const cfg = await api('/api/config');
+      if (v === cfg[pinKey]) location.href = a.getAttribute('href');
+      else toast('Wrong PIN', 'err');
+    } catch (err) { toast('Could not verify PIN', 'err'); }
   });
 }
 
@@ -139,14 +143,6 @@ async function renderStatsBar(elId) {
   } catch (e) {}
 }
 
-/* v10: stage timing line graph. Three lines: intake->doctor, doctor->pharmacy, total.
-   Line color = current status of that stage: green (smooth), yellow (slowing), red (backed up).
-   Stage thresholds: green < 5 min, yellow 5-10, red >= 10. Total: green < 10, yellow 10-20, red >= 20. */
-function stageColor(avg, isTotal) {
-  if (avg == null) return '#9aa1ab';
-  const y = isTotal ? 10 : 5, r = isTotal ? 20 : 10;
-  return avg < y ? '#0e7a4f' : (avg < r ? '#c98a06' : '#b3261e');
-}
 async function renderStageGraph(elId) {
   try {
     const d = await api('/api/stage-times');
@@ -180,4 +176,17 @@ async function renderStageGraph(elId) {
         <text x="${PAD + 2}" y="14" font-size="11" fill="#5c6370">last ${s.length} patients · top = ${Math.ceil(maxY)} min</text>
       </svg>`;
   } catch (e) {}
+}
+
+/* v11: originating-country prefix chip for medicine names */
+const COUNTRY_CODE = { pakistan: 'P', india: 'IN', iran: 'IR', iraq: 'IQ',
+  us: 'US', usa: 'US', 'united states': 'US', uk: 'UK', 'united kingdom': 'UK', canada: 'CA' };
+const COUNTRY_COLOR = { P: '#1d4ed8', IN: '#7c3aed', IR: '#0e7490', IQ: '#9d174d',
+  US: '#b45309', UK: '#334155', CA: '#b3261e' };
+function countryChip(country) {
+  if (!country) return '';
+  const code = COUNTRY_CODE[String(country).trim().toLowerCase()]
+    || String(country).trim().slice(0, 2).toUpperCase();
+  const col = COUNTRY_COLOR[code] || '#334155';
+  return `<span class="cchip" style="color:${col};border-color:${col}" title="${esc(country)}">${code}</span>`;
 }

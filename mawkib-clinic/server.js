@@ -1,5 +1,5 @@
 /*
- * Mawkib Clinic v10 — runs on ONE Android tablet inside Termux.
+ * Mawkib Clinic v11 — runs on ONE Android tablet inside Termux.
  * ZERO npm dependencies: Node.js built-ins only (http + node:sqlite).
  * v3 adds medicine stock tracking: per-item dispense checkboxes at the
  * pharmacy, live stock counts, and a downloadable end-of-day medicine report.
@@ -13,8 +13,14 @@ const path = require('path');
 const os = require('os');
 const { DatabaseSync } = require('node:sqlite');
 
-const PORT = 8080;
-const ADMIN_PIN = process.env.CLINIC_PIN || '60175'; // change via:  CLINIC_PIN=9876 ./start.sh
+// ---- settings: edit config.json (one simple file), then restart the server ----
+let CFG = {};
+try { CFG = JSON.parse(fs.readFileSync(path.join(__dirname, 'config.json'), 'utf8')); }
+catch (e) { console.log('config.json missing or invalid — using built-in defaults.'); }
+const PORT = Number(CFG.port) || 8080;
+const ADMIN_PIN = process.env.CLINIC_PIN || String(CFG.admin_pin || '60175');
+const INTAKE_EXIT_PIN = String(CFG.intake_exit_pin || '786110');
+const STATION_EXIT_PIN = String(CFG.station_exit_pin || '110786');
 const DB_FILE = path.join(__dirname, 'clinic.db');
 const PUBLIC_DIR = path.join(__dirname, 'public');
 const LIST_TYPES = ['nationality', 'doctor', 'pharmacist', 'site', 'nurse', 'complaint', 'language', 'intake'];
@@ -35,6 +41,7 @@ for (const sql of [
   "ALTER TABLE prescription_items ADD COLUMN days INTEGER NOT NULL DEFAULT 1",
   "ALTER TABLE patients ADD COLUMN language TEXT",
   "ALTER TABLE patients ADD COLUMN intake_by TEXT",
+  "ALTER TABLE medicines ADD COLUMN country TEXT",
 ]) { try { db.exec(sql); } catch (e) { /* column already exists */ } }
 // migration: rebuild list_items if its CHECK constraint predates the 'nurse' type
 try {
@@ -105,10 +112,10 @@ function listPatients(date, status) {
          JOIN medicines m ON m.id = pi.medicine_id
         WHERE pr.patient_id = p.id) AS meds,
       (SELECT pr.notes FROM prescriptions pr WHERE pr.patient_id = p.id ORDER BY pr.id DESC LIMIT 1) AS notes
-    FROM patients p WHERE p.visit_date = ?`;
-  const args = [date];
+    FROM patients p WHERE (? = 'all' OR p.visit_date = ?)`;
+  const args = [date, date];
   if (status && status !== 'all') { sql += ' AND p.status = ?'; args.push(status); }
-  sql += ' ORDER BY p.token ASC';
+  sql += ' ORDER BY p.visit_date ASC, p.token ASC';
   return db.prepare(sql).all(...args);
 }
 
@@ -121,7 +128,7 @@ function getPatient(id) {
     items = db.prepare(
       `SELECT pi.id AS item_id, pi.medicine_id, pi.dosage, pi.dispensed, pi.qty,
               pi.dose_qty, pi.frequency, pi.days,
-              m.name, m.stock, m.full_stock FROM prescription_items pi
+              m.name, m.stock, m.full_stock, m.country FROM prescription_items pi
        JOIN medicines m ON m.id = pi.medicine_id WHERE pi.prescription_id = ?`
     ).all(pr.id);
   }
@@ -162,19 +169,20 @@ const server = http.createServer(async (req, res) => {
       if (b.id) {
         const st = Math.max(0, Number(b.stock) || 0);
         const cur = db.prepare('SELECT stock FROM medicines WHERE id = ?').get(b.id);
+        const country = String(b.country || '').trim();
         if (cur && st !== cur.stock) {
           // admin recounted/restocked: new count becomes the 100% baseline
-          db.prepare('UPDATE medicines SET name = ?, active = ?, stock = ?, full_stock = ? WHERE id = ?')
-            .run(String(b.name || '').trim(), b.active ? 1 : 0, st, st, b.id);
+          db.prepare('UPDATE medicines SET name = ?, active = ?, stock = ?, full_stock = ?, country = ? WHERE id = ?')
+            .run(String(b.name || '').trim(), b.active ? 1 : 0, st, st, country, b.id);
         } else {
           // count untouched (e.g. Save-all after a rename): keep stock and baseline as-is
-          db.prepare('UPDATE medicines SET name = ?, active = ? WHERE id = ?')
-            .run(String(b.name || '').trim(), b.active ? 1 : 0, b.id);
+          db.prepare('UPDATE medicines SET name = ?, active = ?, country = ? WHERE id = ?')
+            .run(String(b.name || '').trim(), b.active ? 1 : 0, country, b.id);
         }
       } else if (b.name) {
         const st = Math.max(0, Number(b.stock) || 0);
-        db.prepare('INSERT OR IGNORE INTO medicines (name, stock, full_stock) VALUES (?,?,?)')
-          .run(String(b.name).trim(), st, st);
+        db.prepare('INSERT OR IGNORE INTO medicines (name, stock, full_stock, country) VALUES (?,?,?,?)')
+          .run(String(b.name).trim(), st, st, String(b.country || '').trim());
       }
       return json(res, 200, { ok: true });
     }
@@ -362,6 +370,12 @@ const server = http.createServer(async (req, res) => {
       return json(res, 200, { date, ...row });
     }
 
+    // ---- dates that actually contain patient data ----
+    if (p === '/api/visit-dates' && req.method === 'GET') {
+      return json(res, 200, db.prepare(
+        'SELECT visit_date AS date, COUNT(*) AS n FROM patients GROUP BY visit_date ORDER BY visit_date DESC').all());
+    }
+
     // ---- analytics for the admin dashboard ----
     if (p === '/api/analytics' && req.method === 'GET') {
       const date = url.searchParams.get('date') || today();
@@ -393,38 +407,11 @@ const server = http.createServer(async (req, res) => {
         throughput: { buckets, avg_minutes: avg, completed: times.length } });
     }
 
-    // ---- per-stage timing for the station line graphs ----
-    if (p === '/api/stage-times' && req.method === 'GET') {
-      const date = url.searchParams.get('date') || today();
-      const mins = (a, b) => `(julianday(${b}) - julianday(${a})) * 1440.0`;
-      const series = db.prepare(
-        `SELECT ${mins('created_at', 'prescribed_at')} AS m1,
-                ${mins('prescribed_at', 'dispensed_at')} AS m2,
-                ${mins('created_at', 'dispensed_at')} AS mt
-           FROM patients
-          WHERE visit_date = ? AND status = 'dispensed'
-            AND prescribed_at IS NOT NULL AND dispensed_at IS NOT NULL
-          ORDER BY dispensed_at DESC LIMIT 20`).all(date).reverse()
-        .map(r => ({ m1: Math.max(0, Math.round(r.m1 * 10) / 10),
-                     m2: Math.max(0, Math.round(r.m2 * 10) / 10),
-                     mt: Math.max(0, Math.round(r.mt * 10) / 10) }));
-      const avg1row = db.prepare(
-        `SELECT AVG(${mins('created_at', 'prescribed_at')}) AS a FROM patients
-          WHERE visit_date = ? AND prescribed_at IS NOT NULL`).get(date);
-      const avg2row = db.prepare(
-        `SELECT AVG(${mins('prescribed_at', 'dispensed_at')}) AS a,
-                AVG(${mins('created_at', 'dispensed_at')}) AS t
-           FROM patients WHERE visit_date = ? AND dispensed_at IS NOT NULL AND prescribed_at IS NOT NULL`).get(date);
-      const r1 = (x) => x == null ? null : Math.round(x * 10) / 10;
-      return json(res, 200, { date, series,
-        avg: { intake_to_doctor: r1(avg1row.a), doctor_to_pharmacy: r1(avg2row.a), total: r1(avg2row.t) } });
-    }
-
     // ---- medicine stock summary (admin dashboard) ----
     if (p === '/api/stock-summary' && req.method === 'GET') {
       const date = url.searchParams.get('date') || today();
       const rows = db.prepare(
-        `SELECT m.id, m.name, m.active, m.stock, m.full_stock,
+        `SELECT m.id, m.name, m.country, m.active, m.stock, m.full_stock,
                 COALESCE(SUM(CASE WHEN pat.visit_date = ? AND pi.dispensed = 1 THEN pi.qty END), 0) AS dispensed_today,
                 COALESCE(SUM(CASE WHEN pat.visit_date = ? AND pat.status = 'dispensed' AND pi.dispensed = 0 THEN 1 END), 0) AS not_given_today
            FROM medicines m
@@ -442,30 +429,33 @@ const server = http.createServer(async (req, res) => {
 
     if (p === '/api/medicine-report.csv' && req.method === 'GET') {
       const date = url.searchParams.get('date') || today();
+      const dc = "(? = 'all' OR pat.visit_date = ?)";
       const rows = db.prepare(
-        `SELECT m.name, m.stock,
-                COALESCE(SUM(CASE WHEN pat.visit_date = ? AND pi.dispensed = 1 THEN pi.qty END), 0) AS dispensed_today,
-                COALESCE(COUNT(DISTINCT CASE WHEN pat.visit_date = ? AND pi.dispensed = 1 THEN pat.id END), 0) AS patients_served,
-                COALESCE(SUM(CASE WHEN pat.visit_date = ? AND pat.status = 'dispensed' AND pi.dispensed = 0 THEN 1 END), 0) AS not_given
+        `SELECT m.name, m.country, m.stock,
+                COALESCE(SUM(CASE WHEN ${dc} AND pi.dispensed = 1 THEN pi.qty END), 0) AS dispensed_today,
+                COALESCE(COUNT(DISTINCT CASE WHEN ${dc} AND pi.dispensed = 1 THEN pat.id END), 0) AS patients_served,
+                COALESCE(SUM(CASE WHEN ${dc} AND pat.status = 'dispensed' AND pi.dispensed = 0 THEN 1 END), 0) AS not_given
            FROM medicines m
            LEFT JOIN prescription_items pi ON pi.medicine_id = m.id
            LEFT JOIN prescriptions pr ON pr.id = pi.prescription_id
            LEFT JOIN patients pat ON pat.id = pr.patient_id
-          GROUP BY m.id ORDER BY m.id`).all(date, date, date);
+          GROUP BY m.id ORDER BY m.id`).all(date, date, date, date, date, date);
       const site = getSetting('active_site');
-      const header = ['Site', 'Medicine', 'Units dispensed on ' + date, 'Patients served', 'Times not given (stock-out signal)',
-        'Units remaining now', 'Starting units (remaining + dispensed)', 'Status'];
+      const when = date === 'all' ? 'all days' : date;
+      const header = ['Site', 'Medicine', 'Country', 'Units dispensed (' + when + ')', 'Patients served',
+        'Times not given (stock-out signal)', 'Units remaining now',
+        'Starting units (remaining + dispensed)', 'Status'];
       const lines = [header.join(',')];
       for (const r of rows) {
         const status = r.stock <= 0 ? 'OUT — ORDER NOW'
           : (r.stock <= Math.max(20, r.dispensed_today) ? 'LOW — REORDER' : 'IN STOCK');
-        lines.push([site, r.name, r.dispensed_today, r.patients_served, r.not_given,
+        lines.push([site, r.name, r.country, r.dispensed_today, r.patients_served, r.not_given,
           r.stock, r.stock + r.dispensed_today, status].map(csvCell).join(','));
       }
       const csv = '\uFEFF' + lines.join('\r\n');
       res.writeHead(200, {
         'Content-Type': 'text/csv; charset=utf-8',
-        'Content-Disposition': `attachment; filename="medicine-report-${safeName(site)}-${date}-${stamp()}.csv"`,
+        'Content-Disposition': `attachment; filename="medicine-report-${safeName(site)}-${date === 'all' ? 'all-days' : date}-${stamp()}.csv"`,
       });
       return res.end(csv);
     }
@@ -476,7 +466,7 @@ const server = http.createServer(async (req, res) => {
       const csv = buildShiftCsv(date);
       res.writeHead(200, {
         'Content-Type': 'text/csv; charset=utf-8',
-        'Content-Disposition': `attachment; filename="shift-${safeName(getSetting('active_site'))}-${date}-${stamp()}.csv"`,
+        'Content-Disposition': `attachment; filename="shift-${safeName(getSetting('active_site'))}-${date === 'all' ? 'all-days' : date}-${stamp()}.csv"`,
       });
       return res.end(csv);
     }
@@ -488,6 +478,10 @@ const server = http.createServer(async (req, res) => {
         'Content-Disposition': `attachment; filename="backup-${safeName(getSetting('active_site'))}-${today()}-${stamp()}.db"`,
       });
       return fs.createReadStream(DB_FILE).pipe(res);
+    }
+
+    if (p === '/api/config' && req.method === 'GET') {
+      return json(res, 200, { intake_exit_pin: INTAKE_EXIT_PIN, station_exit_pin: STATION_EXIT_PIN });
     }
 
     if (p === '/api/pin-check' && req.method === 'POST') {
@@ -508,7 +502,9 @@ const server = http.createServer(async (req, res) => {
     if (full.startsWith(PUBLIC_DIR) && fs.existsSync(full) && fs.statSync(full).isFile()) {
       const ext = path.extname(full);
       const types = { '.html': 'text/html', '.css': 'text/css', '.js': 'text/javascript', '.svg': 'image/svg+xml' };
-      res.writeHead(200, { 'Content-Type': (types[ext] || 'application/octet-stream') + '; charset=utf-8' });
+      const cache = (ext === '.png' || file.endsWith('qrcode.js')) ? 'max-age=86400' : 'max-age=300';
+      res.writeHead(200, { 'Content-Type': (types[ext] || 'application/octet-stream') + '; charset=utf-8',
+        'Cache-Control': cache });
       return fs.createReadStream(full).pipe(res);
     }
 
@@ -549,7 +545,7 @@ server.listen(PORT, '0.0.0.0', () => {
     for (const n of list || []) if (n.family === 'IPv4' && !n.internal) ips.push(n.address);
   }
   console.log('==========================================');
-  console.log('  Mawkib Clinic v10 (Azadar e Imam Clinic) is running.');
+  console.log('  Mawkib Clinic v11 (Azadar e Imam Clinic) is running.');
   console.log('  Open on the other tablets (same hotspot):');
   for (const ip of ips) console.log(`    http://${ip}:${PORT}`);
   console.log('  On THIS tablet:  http://localhost:' + PORT);

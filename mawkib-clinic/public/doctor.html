@@ -23,8 +23,6 @@
   </div>
 
   <div class="stat-grid" id="statsBar" style="margin-bottom:12px"></div>
-  <div class="card" style="padding:12px" id="stageCard"><div id="stageGraph"></div></div>
-
   <div id="listView">
     <h2>Waiting for consultation</h2>
     <div id="waiting"></div>
@@ -98,7 +96,6 @@ window._gate = gate;
 async function refresh() {
   showSite('siteBanner');
   renderStatsBar('statsBar');
-  renderStageGraph('stageGraph');
   updateShiftBadge('doctor', '.staff-card', 'doctorShift');
   const list = await api('/api/patients?status=all');
   const waiting = list.filter(p => p.status === 'waiting');
@@ -144,7 +141,7 @@ async function openPatient(id) {
     return `
     <div class="med ${stockClass(m.stock, m.full_stock)} ${c ? 'checked' : ''}" data-id="${m.id}">
       <input type="checkbox" ${c ? 'checked' : ''}>
-      <div class="medname">${esc(m.name)}
+      <div class="medname">${countryChip(m.country)}${esc(m.name)}
         <div class="note" style="font-weight:400">available: ${m.stock}</div>
       </div>
       <input class="dose doseQty" type="number" inputmode="numeric" min="1" value="${c ? c.dose_qty : 1}"
@@ -218,7 +215,7 @@ document.getElementById('savePrescription').onclick = async () => {
 };
 
 loadDoctors();
-guardNav('110786');
+guardNav('station_exit_pin');
 poll(refresh);
 </script>
 </body>

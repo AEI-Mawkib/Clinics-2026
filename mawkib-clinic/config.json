@@ -1,0 +1,15 @@
+{
+  "_readme": "Mawkib Clinic settings. Edit the values below, save, then restart the server (./start.sh). CHANGE THE PINS BEFORE GO-LIVE — these defaults are public on GitHub.",
+
+  "admin_pin": "60175",
+  "_admin_pin_help": "Protects the Admin page: exports, stock, staff lists. Keep with the site lead.",
+
+  "intake_exit_pin": "786110",
+  "_intake_exit_pin_help": "Asked when someone tries to leave the Patient Intake Form screen.",
+
+  "station_exit_pin": "110786",
+  "_station_exit_pin_help": "Asked when leaving the Doctor or Pharmacy screens.",
+
+  "port": 8080,
+  "_port_help": "Leave at 8080 unless it conflicts with something else on the tablet."
+}

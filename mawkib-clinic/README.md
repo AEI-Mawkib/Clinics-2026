@@ -1,291 +1,177 @@
-# Mawkib Clinic v10 (Azadar e Imam Clinic) — offline patient system for the Arbaeen walk
+# Mawkib Clinic — Azadar e Imam Clinic (azadareimam.org)
 
-A tiny, fully offline clinic system for a mawkib medical camp on the Najaf–Karbala route.
-Three Android tablets, **no internet needed at any point during the shift**, everything free
-and open source, and one button at the end of the shift to export the Excel file for OneDrive.
+**A fully offline, three-tablet clinic management system for the Arbaeen walk (Najaf → Karbala).**
+Built for a mawkib medical camp where internet is scarce, power cuts are routine, and the
+volunteers on the ground are not technical. Everything is free and open source, with **zero
+runtime dependencies** — nothing to download in the field, nothing that can fail to install.
 
 ```
- ┌────────────┐        WiFi hotspot (no internet)        ┌────────────┐
- │  Tablet 1  │  ───────────────┐        ┌─────────────  │  Tablet 3  │
- │   INTAKE   │                 ▼        ▼               │  PHARMACY  │
- └────────────┘          ┌──────────────────┐            └────────────┘
-                         │     Tablet 2     │
-                         │ DOCTOR + SERVER  │  ← runs the app + database
-                         └──────────────────┘
+ ┌────────────┐      WiFi hotspot from the server tablet       ┌────────────┐
+ │  Tablet 1  │  ──────────────────┐        ┌───────────────   │  Tablet 3  │
+ │   INTAKE   │                    ▼        ▼                  │  PHARMACY  │
+ └────────────┘             ┌──────────────────┐               └────────────┘
+                            │     Tablet 2     │
+                            │ DOCTOR + SERVER  │  ← Node.js in Termux + SQLite
+                            └──────────────────┘
 ```
 
-Why not a shared Excel file? Three people writing the same .xlsx at the same time will
-corrupt it or silently lose rows — Excel has no multi-writer support. Instead this app keeps
-one SQLite database on the server tablet (SQLite handles simultaneous access safely) and the
-**export button produces the Excel-compatible shift file** you wanted, ready to upload.
+No router needed: the server tablet's own hotspot **is** the network, so a power outage
+changes nothing — the whole clinic runs on tablet batteries.
 
-Everything used is free/open source: Node.js (MIT), SQLite (public domain), Termux (GPL),
-RustDesk for remote access (AGPL). No accounts, no subscriptions, no API keys.
+## The workflow
 
----
+1. **Patient Intake Form** — the coordinator registers the pilgrim: name, age, gender
+   (M/F), nationality, language spoken, complaints (tap buttons), allergies. The patient
+   gets a big **token number**.
+2. **Doctor's Review & Prescription** — the doctor sees the live queue, taps a patient,
+   records vitals (BP, temperature, height, weight), writes notes, and prescribes from the
+   medicine checklist: **quantity per dose × frequency (once/twice/thrice a day, hourly) ×
+   days (1–10)**, with a live prescription total.
+3. **Pharmacy, Wound Care & Dispatch** — the pharmacist sees the exact totals to dispense,
+   per-item checkboxes (with hard blocks on zero-stock items), records wound care
+   (cleaning, dressing, blister care) by pharmacist or nursing assistant, and hands over
+   the medicines. A **QR code + printable instruction sheet** in English, Urdu, Farsi and
+   Arabic is generated for every patient — reopenable all day for returning patients.
+4. **Admin** (PIN-protected) — live analytics, stock control, staff lists, and one-button
+   Excel exports.
 
-## One-time setup (do this in the US, before travel)
+## Feature highlights
 
-You only need to do the technical part once, on **one** tablet (the server tablet —
-give it to the doctor since the doctor's room is central).
+**Clinical flow**
+- Live queues on every station, refreshing every few seconds over the hotspot
+- Daily token numbers; full traceability: intake coordinator, doctor and pharmacist
+  stamped on every patient record
+- Vitals, doctor's notes, allergies (highlighted red), complaint history
+- Wound care recording with performed-by attribution (pharmacist or nursing assistant)
 
-### 1. Install Termux (a free Linux terminal for Android)
+**Medicine & stock control**
+- Editable medicine list with per-medicine stock counts and **originating country**
+  — a colored (P)/(IN)/(IR)/(IQ)/(US)/(UK)/(CA) prefix shows on the doctor and
+  pharmacist screens, since the same drug carries different names per country
+- Stock color bars everywhere: **green ≥ 50%, yellow 30–50%, red < 30%**
+- Shortage warnings ("only 4 in stock — prescribed 6") and a **server-enforced hard block**
+  on dispensing zero-stock items (stock can never go negative, even with simultaneous tablets)
+- Automatic deduction of exactly what was handed over; "NOT GIVEN" tracking as a
+  stock-out signal
 
-Install **Termux from F-Droid** (not the Play Store copy — it's outdated):
-https://f-droid.org/en/packages/com.termux/
+**Patient instructions**
+- QR code per patient linking to a phone-friendly page (over the clinic hotspot)
+- Fully translated into **English, اردو, فارسی, العربية** with correct RTL, defaulting to
+  the language recorded at intake
+- **Thermal-receipt print layout** (58/80mm rolls) — pairs with the free RawBT Android app
+  for generic Bluetooth ESC/POS printers
 
-### 2. Install Node.js and the app (inside Termux)
+**Operations & safety**
+- Per-station shift clocks: yellow at 8 hours, red at 12 — at 12 the page blinks for a
+  minute and locks until a *different* relief person is selected
+- Station pages stay locked (red) until the person on shift is selected
+- Screen-leave PINs on intake and on doctor/pharmacy, and a PIN-protected Admin page —
+  all three PINs live in one simple **config.json** file (see Configuration below)
+- Day/night clock on every header: bright ☀️ during am, dark-but-visible 🌙 during pm
+- **Automatic daily backups**: a consistent database snapshot + Excel-compatible CSV,
+  named `db-<site>-<date>.db` / `shift-<site>-<date>.csv`, written to `backups/` every
+  24 hours and at every server start
 
-Open Termux and type these lines one at a time:
+**Analytics (Admin)**
+- Today at a glance: total / waiting / at pharmacy / dispensed (also mirrored on every
+  station page)
+- Patients by nationality and by language spoken
+- Male / Female / Children (<13) bar graph
+- Intake→medicines throughput histogram (0–1, 1–3, 3–5, 5–8, 8–10, 10–15, 15–20,
+  20–30, 30–60, 60+ minutes) with the day's average
+
+**Exports (all named site + date + timestamp, Excel-ready with Urdu/Arabic-safe encoding)**
+- **Shift report**: every patient with intake info, vitals, prescriptions, what was
+  actually given, wound care, staff names, timestamps. Date picker lists only dates that
+  actually contain data, plus an **All days** option.
+- **Medicine report**: per medicine — country, units dispensed, patients served, times
+  not given, units remaining, starting units, and an order recommendation
+  (IN STOCK / LOW — REORDER / OUT — ORDER NOW)
+- **Raw database backup** download for disaster recovery
+
+## Technology — everything free, nothing to install in the field
+
+| Piece | What | License / cost |
+|---|---|---|
+| Runtime | Node.js (built-ins only — no npm packages) | MIT, free |
+| Database | SQLite via `node:sqlite`, WAL mode | Public domain, free |
+| Host | Termux on Android | GPL, free (F-Droid) |
+| Frontend | Vanilla HTML/CSS/JS, no frameworks | — |
+| QR codes | qrcode-generator (bundled, offline) | MIT, free |
+| Printing | Android print services / RawBT | free |
+| Remote access | RustDesk | AGPL, free |
+| Cloud sync | Manual upload of exports to OneDrive when internet appears | your account |
+
+## Setup (one-time, before travel)
+
+On the server tablet (give it to the doctor):
 
 ```sh
-pkg update -y
-pkg install -y nodejs git
-git clone https://github.com/YOUR-ORG/mawkib-clinic-v10.git
-cd mawkib-clinic-v10
+# 1. Install Termux from F-Droid (not Play Store): https://f-droid.org/en/packages/com.termux/
+# 2. Inside Termux:
+pkg update -y && pkg install -y nodejs git
+git clone https://github.com/YOUR-ORG/mawkib-clinic.git
+cd mawkib-clinic
 chmod +x start.sh
 ./start.sh
 ```
 
-You'll see: `Mawkib Clinic is running` with an address like `http://192.168.43.1:8080`.
-That's it. There is **no `npm install`** — the app has zero dependencies on purpose,
-so nothing can fail to download in the field.
+There is **no `npm install`** — the app has zero dependencies on purpose.
 
-### 3. Stop Android from killing the server
+## Configuration — one simple file
 
-- In Termux, run `termux-wake-lock` once per shift (keeps it alive), or
-- Android Settings → Apps → Termux → Battery → **Unrestricted**.
+All PINs live in **`config.json`** in the project folder. Open it, change the values,
+save, restart the server (`./start.sh`). That's the entire configuration system:
 
-### 4. Test with the other two tablets
+```json
+{
+  "admin_pin": "60175",         ← Admin page (exports, stock, staff lists)
+  "intake_exit_pin": "786110",  ← asked when leaving the Patient Intake screen
+  "station_exit_pin": "110786", ← asked when leaving the Doctor or Pharmacy screens
+  "port": 8080
+}
+```
 
-1. On the server tablet: turn on **WiFi hotspot** (Settings → Hotspot). No SIM/internet needed.
-2. Connect tablets 1 and 3 to that hotspot.
-3. Open Chrome on each and go to the address Termux printed (e.g. `http://192.168.43.1:8080`).
-4. Tablet 1 opens **Intake**, server tablet opens **Doctor** (`http://localhost:8080`),
-   tablet 3 opens **Pharmacy**. Add each page to the home screen
-   (Chrome menu → *Add to Home screen*) so volunteers just tap one icon.
+**Change the PINs before go-live** — the defaults above are public in this repository.
+To edit on the tablet: `cd mawkib-clinic && nano config.json`. If the file is missing or
+broken, the app still starts with the defaults, so a typo can never take the clinic down.
+The admin PIN can also be overridden per-launch with `CLINIC_PIN=... ./start.sh`.
 
----
+3. Turn on the tablet's **WiFi hotspot** (no SIM/internet needed). Connect the other two
+   tablets to it and open the address Termux prints (usually `http://192.168.43.1:8080`)
+   in Chrome. Add each station page to the home screen.
+4. Keep the server alive: run `termux-wake-lock`, and set Termux's battery usage to
+   Unrestricted. Attach a power bank to the server tablet.
+5. Optional: `termux-setup-storage` once, then start with
+   `BACKUP_DIR=~/storage/shared/MawkibBackups ./start.sh` to make daily backups visible
+   in the Android Files app for easy OneDrive upload.
+6. Optional: install RustDesk on the server tablet and note its ID/password — whenever the
+   tablet touches internet, the US team can remotely assist.
 
-## Daily use (what the volunteers do — nothing technical)
+## Daily use
 
-- **Intake volunteer:** types name, taps age/gender/complaint buttons, presses
-  *Register patient*. A big **token number** appears — tell it to the pilgrim.
-- **Doctor:** sees the waiting list update by itself. Taps a patient, writes notes,
-  **ticks medicines from the 15-item list, types dosage**, presses *Save & send to Pharmacy*.
-- **Pharmacist:** the patient appears automatically with the ticked medicines and dosages.
-  Hands them over, presses *Medicines handed over ✓*.
+- Each station selects the person on shift (the page unlocks and their shift clock starts).
+- Intake registers → doctor prescribes → pharmacist dispenses, records wound care, and
+  hands the patient their QR/printed instructions.
+- End of shift: Admin → pick the date → **Download shift file** and **medicine report**;
+  upload to OneDrive whenever internet appears. Daily backups are also written
+  automatically to `backups/`.
 
-Token numbers reset every day. Lists refresh themselves every 4 seconds.
-
-## End of each 12-hour shift
-
-1. Open **Admin** on any tablet and enter the admin PIN (default `60175`).
-2. Tap **Download shift file (Excel/CSV)** — a file like `mawkib-clinic-2026-08-14.csv`
-   lands in the tablet's Downloads. It opens directly in Excel.
-3. Whenever internet appears (SIM, another mawkib's WiFi, Karbala), open the **OneDrive app**
-   and upload the file. Also tap **Download full database backup** once a day and upload
-   that too — it's the complete raw database, your disaster-recovery copy.
-
-
-Change the admin PIN by starting the server with: `CLINIC_PIN=9876 ./start.sh`
-**Change it from the default before travel** — the PIN protects the export, backup and all lists.
-
-## Remote access from the US
-
-Install **RustDesk** (free, open source) on the server tablet: https://rustdesk.com
-and on your PC in the US. Note the tablet's RustDesk ID + password before travel.
-Whenever the tablet has internet, you can see and control its screen from the US —
-restart the server, pull files, fix anything, without asking the volunteers to do it.
-
-## If something goes wrong in the field (give this to volunteers)
+## Field troubleshooting (for volunteers)
 
 | Problem | Fix |
 |---|---|
-| Page says "can't connect" | Check the hotspot is on and tablets are connected to it |
-| Server tablet restarted | Open Termux, type `cd mawkib-clinic` then `./start.sh` |
-| Termux was closed | Same as above — **no data is lost**, it's all saved in `clinic.db` |
-| Forgot the address | It's printed in Termux every time the server starts |
+| Page says "can't connect" | Check the server tablet's hotspot is ON and this tablet is connected to it |
+| Server tablet restarted | Open Termux: `cd mawkib-clinic` then `./start.sh` — no data is lost |
+| Forgot the address | Termux prints it every time the server starts |
+| Page is red / locked | Select the person on shift at the top; after 12 hours, select the relief person |
+| Export looks empty | Use the date dropdown — pick the date that shows patients, or "All days" |
 
-Data survives restarts, crashes, and battery deaths — every tap is written to disk instantly.
+Every tap is written to disk instantly; the database survives restarts, crashes and dead
+batteries.
 
-## What's in this repo
+## Privacy
 
-```
-server.js      – the whole backend (Node.js built-ins only, ~300 lines)
-schema.sql     – database schema + the seeded 15-medicine list (edit names here or in Admin)
-start.sh       – start script
-public/        – the four pages: intake, doctor, pharmacy, admin
-clinic.db      – created automatically on first run (git-ignored)
-```
-
-## Privacy note
-
-The shift file contains patient names and medical details. Keep the exported files in a
-private OneDrive folder, change the default PIN, and don't reuse the hotspot password
-from previous years.
-
-## What's new in v2
-
-- **Nationality** buttons on Intake (Pakistan, India, Iran, Iraq, US, UK, Canada by default) —
-  add/remove/rename on the Admin page.
-- **Doctor on shift** dropdown on the Doctor page, **Pharmacist on shift** dropdown on the
-  Pharmacy page — names managed in Admin, choice remembered per tablet, stamped on every record.
-- Vitals split into **Blood pressure, Temperature, Height, Weight** fields.
-- **Site being served**: pick the active site in Admin; it appears in the header of the
-  Intake, Doctor and Pharmacy pages within a few seconds and is stamped on each patient record.
-- The shift export now includes Site, Nationality, Doctor, Pharmacist and the four vitals columns.
-
-## What's new in v3 — medicine stock tracking
-
-- **Pharmacy:** each prescribed medicine now has its own checkbox and a "units given" box.
-  Everything is ticked by default; the pharmacist unticks anything that could not be given
-  (e.g. out of stock) and adjusts the unit count. Unticked items show as **NOT GIVEN** on the
-  patient record and feed the stock-out report.
-- **Live stock:** set the starting count for each medicine on the Admin page (e.g. Paracetamol
-  500 mg = 1000). The count goes down automatically with every dispense, and the pharmacist
-  sees "in stock: N" / "OUT OF STOCK" next to each item while dispensing.
-- **Admin stock table:** dispensed today, times not given, units remaining, and a status badge
-  per medicine — IN STOCK / LOW — REORDER / OUT — ORDER NOW.
-- **Medicine report:** one button downloads an Excel-compatible CSV per day: units dispensed,
-  patients served, times not given, units remaining, starting units, and an order recommendation —
-  exactly what you need to decide what to restock overnight.
-
-## v3 update pack (mawkib-clinic-v3)
-
-- **Azadar e Imam Clinic logo** ships in the repo (`public/logo.png`) and shows on the top of
-  every page, with azadareimam.org underneath — no download step needed.
-- Intake page renamed to **Patient Intake Form**.
-- **Stock color bars everywhere:** each medicine line is green at 50%+ of its counted stock,
-  yellow at 30–50%, red under 30% — on the Doctor page, the Pharmacy page, and both the Admin
-  stock table and the Admin medicine list. The 100% baseline is whatever count Admin last saved.
-- **Doctor sees availability:** "available: N" under every medicine on the prescription list.
-- **New prescribing controls:** the doctor picks a quantity per dose and a frequency
-  (once a day / twice a day / thrice a day / hourly). The system multiplies them and shows the
-  pharmacist the total units (e.g. 2 × thrice a day = total 6), pre-filled in the units-given box.
-- **Smarter file names:** the shift export, the medicine report, and the database backup are all
-  named with the site + date + timestamp, e.g. `shift-Pole-512-2026-08-14-183502.csv`, and the
-  medicine report includes a Site column.
-- **One-tap saving:** the Admin medicine list now has a single **Save all medicines** button.
-
-### Later v3 additions
-
-- **Pharmacist sees the prescription at a glance:** a summary bar on each patient —
-  "3 medications · 34 units total to dispense" — above the itemized list.
-- **Shift name gates:** the Doctor page is locked (grayed out) until the doctor on shift is
-  selected in the highlighted card at the top; the Pharmacy page works the same way for the
-  pharmacist. No selection = no charting or dispensing.
-- **Wound care at the pharmacy station:** tap-to-record procedures — wound cleaned,
-  bandage/dressing applied, blister drained (popped), blister padded — with a "performed by"
-  name for the pharmacist or nursing assistant. Recorded on the patient and in the shift export
-  (new "Wound care" and "Wound care by" columns).
-
-
-## What's new in v5
-
-- **Shortage warnings at the pharmacy:** if the shelf has fewer units than the doctor
-  prescribed, that medicine line turns red and shows "only N in stock — prescribed M",
-  with the units-given box pre-filled to what is actually available.
-- **Zero-stock hard block:** if a prescribed medicine has 0 units left, its line is red and
-  disabled — it cannot be ticked or dispensed. The server enforces this too, so stock can
-  never go negative even if two tablets race.
-- **Shift clocks:** selecting the doctor or pharmacist on shift starts a clock (kept on the
-  server, shared across tablets). At 8 hours the name card turns yellow, at 12 hours it turns
-  red, with a live "on shift: Xh Ym" readout — a visible nudge that it's time for relief.
-  Picking a different name starts a fresh clock for the new person.
-- **Official logo + web address:** the Azadar e Imam Clinic logo and azadareimam.org appear
-  in the header of every page.
-
-## What's new in v6
-
-- **Wound care "Performed by" is now a dropdown** on the Pharmacy page, listing every
-  pharmacist and every nursing assistant, each labeled with their role. It pre-selects the
-  pharmacist on shift; switch it to the nursing assistant when they did the bandaging or
-  drained the blister.
-- **New Admin section — Nursing assistants:** add, rename, hide, or remove the nursing
-  assistants who appear in that dropdown, exactly like the doctors and pharmacists lists.
-- Older databases migrate automatically on first start — no data loss.
-
-
-## What's new in v7
-
-- **Days on every prescription:** the doctor now sets quantity per dose, frequency, AND a
-  1-10 day duration. Total units = quantity x frequency x days (e.g. 2 x thrice a day x 4
-  days = 24), shown in a live **Prescription total** bar at the bottom of the doctor's form
-  and delivered to the pharmacist as the exact dispatch quantity, pre-filled per item.
-- **Page renames:** "Doctor's Review & Prescription" and "Pharmacy, Wound Care & Dispatch".
-- **Bigger logo** in every header, and a **live clock** at the top-right of every page —
-  DD/MM/YYYY and 12-hour HH:MM:SS with a.m./p.m.
-- **Hard lock on blank names:** if no doctor (or pharmacist) is selected, the page turns red
-  and everything below the name card is disabled until a name is picked.
-- **12-hour shift lock:** when a shift clock passes 12 hours, the page blinks red for one
-  minute and stays locked until a *different* name is selected — re-picking the same person
-  does not reset the clock.
-- **Automatic daily backups:** every hour the server refreshes that day's backup pair in the
-  `backups/` folder — a consistent database snapshot (`db-<site>-<date>.db`) and an
-  Excel-compatible dump (`shift-<site>-<date>.csv`), one pair per day named with the site and
-  date. Even if nobody presses Export, yesterday's complete file is always sitting on the
-  tablet. To also mirror them into Android's shared storage, run `termux-setup-storage` once,
-  then start with `BACKUP_DIR=~/storage/shared/MawkibBackups ./start.sh`.
-
-## What's new in v8
-
-- **Patient QR instructions in 4 languages:** every dispensed patient gets a QR code on the
-  Pharmacy page. Scanning it (phone on the clinic WiFi) opens a clean instruction page with
-  the patient's info, vitals, each medicine with how many to take, how often, and for how many
-  days — switchable between **English, اردو, فارسی and العربية** with one tap (RTL rendered
-  correctly). It auto-opens in the language recorded at intake. The pharmacist can also just
-  open the page on the tablet and show it.
-- **Thermal printing:** a "Print instructions" button opens the sheet in a print-optimized
-  layout sized for an 80mm thermal roll. On Android, install the printer's print service or
-  the free RawBT app (for generic Bluetooth ESC/POS printers), pair the printer once, and the
-  print dialog will list it. QR generation and printing all work fully offline
-  (the QR library ships in the repo — MIT licensed, no internet needed).
-- **Editable complaint buttons:** the intake page's complaint buttons now come from the
-  database, managed in a new Admin section (add/rename/hide/remove) exactly like medicines.
-- **Language spoken at intake:** a new tap-one selector (English, Urdu, Farsi, Arabic seeded),
-  managed in its own Admin section. It's shown to the doctor and pharmacist, drives the QR
-  page's default language, and appears as a Language column in the shift export.
-
-## What's new in v9
-
-- **Clock:** now HH:MM in 12-hour time with plain am/pm (no dots). During am hours the clock
-  glows bright (☀️); during pm hours it shifts to a dark-but-readable tone (🌙) — a day/night
-  feel at a glance.
-- **Full dispense summary:** after dispensing (or when tapping any completed patient), the
-  Pharmacy page shows the doctor's name on top with the pharmacist underneath, then the full
-  intake info, vitals, doctor's notes, every medicine with dosage/frequency/days and what was
-  actually given, wound care — plus the QR and print buttons. Completed patients stay
-  reopenable all day, so a returning patient's instructions can be reprinted anytime.
-- **Screen-leave PINs:** leaving the Patient Intake Form requires PIN **786110**; leaving the
-  Doctor or Pharmacy screens requires PIN **110786**. Keeps volunteers from wandering off
-  their station's screen.
-- **Intake coordinator on shift:** the intake page now has the same highlighted name card,
-  page lock, and 8h/12h shift clock as the doctor and pharmacist. Coordinators are managed in
-  a new Admin section, and each patient records who registered them (new "Intake by" column
-  in the export).
-- **Admin analytics:** at-a-glance chips of patients by nationality and by language spoken;
-  a bar graph of Male / Female / Children (<13); and a throughput graph showing how long
-  patients took from intake to receiving medicines (0-15 / 15-30 / 30-60 / 60+ minutes, with
-  the day's average).
-- **Complete translations:** every fixed label on the patient instruction page — including
-  gender, nationality, complaint, allergies, staff names, the print button and footer — now
-  renders in English, Urdu, Farsi and Arabic. (Free-typed text like the doctor's notes stays
-  as written.)
-- **Admin PIN is now 60175** (still overridable with CLINIC_PIN when starting the server).
-
-## What's new in v10
-
-- **Receipt-style printing:** the patient instruction sheet now prints in a squeezed thermal
-  layout — zero page margins, compact single-line fields, dashed separators between medicines —
-  sized for small 58/80mm roll printers, so nothing wastes paper.
-- **Station dashboards:** the Intake, Doctor and Pharmacy pages now show the same at-a-glance
-  counters as Admin (Intake / Waiting / At pharmacy / Dispensed) right under the name card,
-  plus a **stage timing line graph**: a solid line for Intake → Doctor, a dashed line for
-  Doctor → Pharmacy, and a dotted line for the total journey, drawn over the last 20 completed
-  patients. Each line is green when the stage is smooth (avg under 5 min), yellow when slowing
-  (5-10 min), red when backed up (10+ min; total uses 10/20). One glance tells the site lead
-  which station needs more hands.
-- **Auto-backup every 24 hours** (plus once at every server start) instead of hourly.
-- **Finer throughput buckets in Admin:** 0-1, 1-3, 3-5, 5-8, 8-10, 10-15, 15-20, 20-30,
-  30-60 and 60+ minutes.
+Shift files contain patient names and medical details. Keep exports in a private OneDrive
+folder, don't reuse hotspot passwords across years, and keep the admin PIN with the site
+lead only.

@@ -23,8 +23,6 @@
   </div>
 
   <div class="stat-grid" id="statsBar" style="margin-bottom:12px"></div>
-  <div class="card" style="padding:12px" id="stageCard"><div id="stageGraph"></div></div>
-
   <div id="listView">
     <h2>Ready to dispense</h2>
     <div id="ready"></div>
@@ -120,7 +118,6 @@ window._gate = gate;
 async function refresh() {
   showSite('siteBanner');
   renderStatsBar('statsBar');
-  renderStageGraph('stageGraph');
   updateShiftBadge('pharmacist', '.staff-card', 'pharmShift');
   const list = await api('/api/patients?status=all');
   const ready = list.filter(p => p.status === 'prescribed');
@@ -177,7 +174,7 @@ async function openPatient(id) {
     ? ((p.items && p.items.length)
         ? p.items.map(it => `
           <div class="med ${it.dispensed ? 'checked' : 'stk-red'}">
-            <div class="medname">${esc(it.name)}
+            <div class="medname">${countryChip(it.country)}${esc(it.name)}
               <div class="note" style="font-weight:400">${esc(it.dosage || '')}</div>
             </div>
             <div style="font-weight:800">${it.dispensed ? 'given ×' + it.qty : 'NOT GIVEN'}</div>
@@ -200,7 +197,7 @@ async function openPatient(id) {
         return `
         <div class="med ${rowColor} ${checked ? 'checked' : ''} ${zero ? 'blocked' : ''}" data-item="${it.item_id}" data-zero="${zero ? 1 : 0}">
           <input type="checkbox" ${checked ? 'checked' : ''} ${zero ? 'disabled' : ''} title="Untick if not given (e.g. out of stock)">
-          <div class="medname">${esc(it.name)}
+          <div class="medname">${countryChip(it.country)}${esc(it.name)}
             <div class="note" style="font-weight:400">${esc(it.dosage || '')} · ${stockHint}</div>
           </div>
           <input class="dose qtyIn" type="number" inputmode="numeric" min="1" max="${Math.max(it.stock,1)}" value="${qty}"
@@ -275,7 +272,7 @@ document.getElementById('dispense').onclick = async () => {
 };
 
 loadPharmacists();
-guardNav('110786');
+guardNav('station_exit_pin');
 poll(refresh);
 </script>
 </body>
