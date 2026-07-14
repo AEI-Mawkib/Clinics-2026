@@ -22,7 +22,8 @@
     <p class="note" style="margin-bottom:0">Names are managed on the Admin page. Your choice is remembered on this tablet.</p>
   </div>
 
-  <div class="stat-grid" id="statsBar" style="margin-bottom:12px"></div>
+  <div class="stat-grid" id="statsBar" style="margin-bottom:10px"></div>
+  <div id="stageTimes" style="margin-bottom:12px"></div>
   <div id="intakeBody">
   <div class="card">
     <label for="name">Patient name *</label>
@@ -42,6 +43,7 @@
 
     <label>Language spoken — tap one</label>
     <div class="pills" id="language"></div>
+    <input id="languageOther" type="text" placeholder="Type the language spoken" style="margin-top:10px;display:none">
 
     <label>Complaint — tap all that apply</label>
     <div class="pills" id="complaints"></div>
@@ -115,7 +117,18 @@ async function loadPickers() {
   const [nats, langs, comps] = await Promise.all([
     api('/api/list/nationality'), api('/api/list/language'), api('/api/list/complaint')]);
   singlePick('nationality', v => nationality = v, nats);
-  singlePick('language', v => language = v, langs);
+  // language picker with an "Other" option that reveals a free-text box
+  const lbox = document.getElementById('language');
+  const lother = document.getElementById('languageOther');
+  lbox.innerHTML = langs.map(n => `<button type="button" class="pill" data-v="${esc(n.name)}">${esc(n.name)}</button>`).join('')
+    + '<button type="button" class="pill" data-v="__other__">Other</button>';
+  lbox.querySelectorAll('.pill').forEach(b => b.onclick = () => {
+    lbox.querySelectorAll('.pill').forEach(x => x.classList.remove('on'));
+    b.classList.add('on');
+    if (b.dataset.v === '__other__') { lother.style.display = 'block'; lother.focus(); language = ''; }
+    else { lother.style.display = 'none'; lother.value = ''; language = b.dataset.v; }
+  });
+  lother.oninput = () => { language = lother.value.trim(); };
   const box = document.getElementById('complaints');
   box.innerHTML = comps.map(c => `<button type="button" class="pill">${esc(c.name)}</button>`).join('');
   box.querySelectorAll('.pill').forEach(b => b.onclick = () => b.classList.toggle('on'));
@@ -144,6 +157,8 @@ document.getElementById('save').onclick = async () => {
     ['name','age','complaintOther','allergies'].forEach(id => document.getElementById(id).value = '');
     document.querySelectorAll('.pill.on').forEach(x => x.classList.remove('on'));
     gender = ''; nationality = ''; language = '';
+    document.getElementById('languageOther').style.display = 'none';
+    document.getElementById('languageOther').value = '';
     document.getElementById('name').focus();
     refresh();
   } catch (e) { toast(e.message, 'err'); }
@@ -152,6 +167,7 @@ document.getElementById('save').onclick = async () => {
 async function refresh() {
   showSite('siteBanner');
   renderStatsBar('statsBar');
+  renderStageTimes('stageTimes');
   updateShiftBadge('intake', '.staff-card', 'intakeShift');
   const list = await api('/api/patients?status=all');
   const q = document.getElementById('queue');

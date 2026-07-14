@@ -91,24 +91,45 @@ async function updateShiftBadge(role, cardSel, badgeId) {
   } catch (e) {}
 }
 
-/* v9: live clock — DD/MM/YYYY and 12-hour HH:MM with am/pm (no dots).
+/* v12: live clock — DD/MM/YYYY and 12-hour HH:MM with am/pm (no dots).
+   Time and timezone come from the SERVER tablet (/api/time), so every station shows the
+   clinic's local time even if a viewing tablet is set to another timezone.
    am = daytime = bright clock; pm = nighttime = dark-but-visible clock. */
+let _timeBase = null; // { serverEpoch, offsetMinutes, clientAt }
+async function syncServerTime() {
+  try {
+    const t = await api('/api/time');
+    _timeBase = { serverEpoch: t.epoch, offsetMinutes: t.offsetMinutes, clientAt: Date.now() };
+  } catch (e) { /* keep last sync, or fall back to device time */ }
+}
+function serverNow() {
+  if (!_timeBase) return null;
+  const ms = _timeBase.serverEpoch + (Date.now() - _timeBase.clientAt)
+    + _timeBase.offsetMinutes * 60000;
+  return new Date(ms); // read with getUTC* — offset already applied
+}
 function startHeaderClock() {
   const el = document.getElementById('liveClock');
   if (!el) return;
   const z = (n) => String(n).padStart(2, '0');
   const tick = () => {
-    const d = new Date();
-    const isDay = d.getHours() < 12;
-    const suffix = isDay ? 'am' : 'pm';
-    const h = d.getHours() % 12 || 12;
+    const s = serverNow();
+    const useUTC = !!s;
+    const d = s || new Date();
+    const hours = useUTC ? d.getUTCHours() : d.getHours();
+    const minutes = useUTC ? d.getUTCMinutes() : d.getMinutes();
+    const day = useUTC ? d.getUTCDate() : d.getDate();
+    const month = (useUTC ? d.getUTCMonth() : d.getMonth()) + 1;
+    const year = useUTC ? d.getUTCFullYear() : d.getFullYear();
+    const isDay = hours < 12;
     el.classList.toggle('daytime', isDay);
     el.classList.toggle('nighttime', !isDay);
-    el.innerHTML = `<div class="cdate">${z(d.getDate())}/${z(d.getMonth() + 1)}/${d.getFullYear()}</div>`
-      + `<div class="ctime">${isDay ? '☀️' : '🌙'} ${z(h)}:${z(d.getMinutes())} ${suffix}</div>`;
+    el.innerHTML = `<div class="cdate">${z(day)}/${z(month)}/${year}</div>`
+      + `<div class="ctime">${isDay ? '☀️' : '🌙'} ${z(hours % 12 || 12)}:${z(minutes)} ${isDay ? 'am' : 'pm'}</div>`;
   };
-  tick();
+  syncServerTime().then(tick);
   setInterval(tick, 15 * 1000);
+  setInterval(syncServerTime, 5 * 60 * 1000);
 }
 document.addEventListener('DOMContentLoaded', startHeaderClock);
 
@@ -179,9 +200,9 @@ async function renderStageGraph(elId) {
 }
 
 /* v11: originating-country prefix chip for medicine names */
-const COUNTRY_CODE = { pakistan: 'P', india: 'IN', iran: 'IR', iraq: 'IQ',
+const COUNTRY_CODE = { pakistan: 'PK', india: 'IN', iran: 'IR', iraq: 'IQ',
   us: 'US', usa: 'US', 'united states': 'US', uk: 'UK', 'united kingdom': 'UK', canada: 'CA' };
-const COUNTRY_COLOR = { P: '#1d4ed8', IN: '#7c3aed', IR: '#0e7490', IQ: '#9d174d',
+const COUNTRY_COLOR = { PK: '#1d4ed8', IN: '#7c3aed', IR: '#0e7490', IQ: '#9d174d',
   US: '#b45309', UK: '#334155', CA: '#b3261e' };
 function countryChip(country) {
   if (!country) return '';
@@ -189,4 +210,29 @@ function countryChip(country) {
     || String(country).trim().slice(0, 2).toUpperCase();
   const col = COUNTRY_COLOR[code] || '#334155';
   return `<span class="cchip" style="color:${col};border-color:${col}" title="${esc(country)}">${code}</span>`;
+}
+
+/* v12: stage timing chips — where is the choke point today?
+   Stage: green < 5 min, yellow 5-10, red >= 10. Total: green < 10, yellow 10-20, red >= 20. */
+function stageColor(avg, isTotal) {
+  if (avg == null) return '#9aa1ab';
+  const y = isTotal ? 10 : 5, r = isTotal ? 20 : 10;
+  return avg < y ? '#0e7a4f' : (avg < r ? '#c98a06' : '#b3261e');
+}
+async function renderStageTimes(elId) {
+  try {
+    const d = await api('/api/stage-times');
+    const el = document.getElementById(elId);
+    if (!el) return;
+    const fmt = (x) => x == null ? '—' : (x < 1 ? '<1' : Math.round(x)) + ' min';
+    const chip = (label, avg, isTotal) => {
+      const c = stageColor(avg, isTotal);
+      return `<span class="chip" style="background:none;border:2px solid ${c};color:${c}">${label}: ${fmt(avg)}</span>`;
+    };
+    el.innerHTML = `<div class="chips" style="margin:0">
+      ${chip('Intake → Doctor', d.avg.intake_to_doctor, false)}
+      ${chip('Doctor → Pharmacy', d.avg.doctor_to_pharmacy, false)}
+      ${chip('Total', d.avg.total, true)}
+    </div>`;
+  } catch (e) {}
 }

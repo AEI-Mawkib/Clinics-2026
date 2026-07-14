@@ -31,15 +31,25 @@
   .totalbar { background: #e7f0ec; color: #0e5c3f; font-weight: 900; padding: 10px 12px;
               border-radius: 10px; margin-top: 10px; font-size: 19px; }
   .foot { color: #5c6370; font-size: 15px; margin-top: 12px; }
+  .advice { font-weight: 700; margin-top: 12px; }
+  .clinichead { text-align: center; border-bottom: 2px solid #16181c; padding-bottom: 8px; margin-bottom: 10px; }
+  .clinichead .cname { font-weight: 900; font-size: 20px; }
+  .clinichead .csite { font-weight: 700; }
+  .clinichead .cmail { color: #5c6370; font-size: 14px; }
   .printbtn { display: block; width: 100%; margin-top: 14px; font-size: 20px; font-weight: 800;
               padding: 14px; border: none; border-radius: 12px; background: #16181c; color: #fff; }
   [dir=rtl] .kv b { min-width: 0; margin-left: 8px; }
   @media print {
-    /* Receipt mode: squeeze everything for a small thermal roll (58/80mm). */
+    /* Receipt mode: squeeze for a small thermal roll (58/80mm).
+       Padding below leaves a safe zone so printer heads don't clip the left edge or first line. */
     header, .langs, .printbtn, .foot { display: none !important; }
+    .advice { display: block !important; font-size: 12px; border-top: 1px dashed #000; padding-top: 2px; }
+    .clinichead { border-bottom: 2px solid #000; padding-bottom: 2px; margin-bottom: 3px; }
+    .clinichead .cname { font-size: 13px; }
+    .clinichead .csite, .clinichead .cmail { font-size: 11px; color: #000; }
     @page { margin: 0; }
     body { background: #fff; font-size: 11px; line-height: 1.25; margin: 0; }
-    main { max-width: 72mm; padding: 0 2mm; margin: 0; }
+    main { max-width: 66mm; padding: 4mm 2mm 8mm 5mm; margin: 0; }
     .sheet { border: none; padding: 0; border-radius: 0; }
     .sheet h1 { font-size: 12px; margin: 4px 0 2px; border-bottom: 1px solid #000; padding-bottom: 1px; }
     .kv { margin: 0; }
@@ -88,7 +98,7 @@ const T = {
         notGiven: 'NOT given (out of stock) — ask at another clinic',
         notes: "Doctor's advice", wound: 'Wound care done', by: 'by',
         totalLine: (m, u) => `Total: ${m} medicine${m > 1 ? 's' : ''}, ${u} units`,
-        foot: 'If your condition gets worse, please come back to the clinic.' },
+        foot: 'If your condition gets worse, please go to the closest medical facility.' },
   ur: { dir: 'rtl', title: 'آپ کی دوا کی ہدایات', name: 'نام', age: 'عمر', yrs: 'سال',
         gender: 'جنس', male: 'مرد', female: 'خاتون', other: 'دیگر',
         nationality: 'قومیت', complaint: 'شکایت', allergies: 'الرجی',
@@ -104,7 +114,7 @@ const T = {
         notGiven: 'نہیں دی گئی (اسٹاک ختم) — کسی اور کلینک سے پوچھیں',
         notes: 'ڈاکٹر کا مشورہ', wound: 'زخم کی مرہم پٹی کی گئی', by: 'بذریعہ',
         totalLine: (m, u) => `کل: ${m} دوائیں، ${u} عدد`,
-        foot: 'اگر طبیعت زیادہ خراب ہو تو براہ کرم کلینک واپس آئیں۔' },
+        foot: 'اگر طبیعت زیادہ خراب ہو تو براہ کرم قریب ترین طبی مرکز پر جائیں۔' },
   fa: { dir: 'rtl', title: 'دستور مصرف داروهای شما', name: 'نام', age: 'سن', yrs: 'سال',
         gender: 'جنسیت', male: 'مرد', female: 'زن', other: 'دیگر',
         nationality: 'ملیت', complaint: 'شکایت', allergies: 'حساسیت دارویی',
@@ -120,7 +130,7 @@ const T = {
         notGiven: 'داده نشد (موجودی تمام شده) — از درمانگاه دیگری بگیرید',
         notes: 'توصیه پزشک', wound: 'پانسمان انجام شد', by: 'توسط',
         totalLine: (m, u) => `مجموع: ${m} دارو، ${u} عدد`,
-        foot: 'اگر حال شما بدتر شد، لطفاً به درمانگاه برگردید.' },
+        foot: 'اگر حال شما بدتر شد، لطفاً به نزدیک‌ترین مرکز درمانی مراجعه کنید.' },
   ar: { dir: 'rtl', title: 'تعليمات الدواء الخاصة بك', name: 'الاسم', age: 'العمر', yrs: 'سنة',
         gender: 'الجنس', male: 'ذكر', female: 'أنثى', other: 'أخرى',
         nationality: 'الجنسية', complaint: 'الشكوى', allergies: 'الحساسية',
@@ -136,7 +146,7 @@ const T = {
         notGiven: 'لم يُصرف (نفد المخزون) — اسأل في عيادة أخرى',
         notes: 'نصيحة الطبيب', wound: 'تمت العناية بالجرح', by: 'بواسطة',
         totalLine: (m, u) => `المجموع: ${m} أدوية، ${u} وحدة`,
-        foot: 'إذا ساءت حالتك، يرجى العودة إلى العيادة.' },
+        foot: 'إذا ساءت حالتك، يرجى التوجه إلى أقرب مركز طبي.' },
 };
 
 const LANG_BY_NAME = { english: 'en', urdu: 'ur', farsi: 'fa', persian: 'fa', arabic: 'ar' };
@@ -173,6 +183,11 @@ function render() {
 
   const genderWord = p.gender === 'M' ? t.male : p.gender === 'F' ? t.female : p.gender ? t.other : '';
   sheet.innerHTML = `
+    <div class="clinichead" dir="ltr">
+      <div class="cname">Azadar e Imam Clinic</div>
+      ${p.site ? `<div class="csite">📍 ${esc(p.site)}</div>` : ''}
+      <div class="cmail">info@azadareimam.org · azadareimam.org</div>
+    </div>
     <h1>${t.title}</h1>
     ${p.doctor_name ? `<div class="kv"><b>${t.doctor}:</b> ${esc(p.doctor_name)}</div>` : ''}
     ${p.pharmacist_name ? `<div class="kv"><b>${t.pharmacist}:</b> ${esc(p.pharmacist_name)}</div>` : ''}
@@ -200,7 +215,7 @@ function render() {
     <div class="totalbar">${t.totalLine(givenItems.length, totalUnits)}</div>
     ${p.notes ? `<h1 style="margin-top:14px">${t.notes}</h1><p>${esc(p.notes)}</p>` : ''}
     ${p.wound_care ? `<div class="kv" style="margin-top:10px"><b>${t.wound}:</b> ${esc(p.wound_care)}${p.wound_care_by ? ' — ' + t.by + ' ' + esc(p.wound_care_by) : ''}</div>` : ''}
-    <p class="foot">${t.foot}</p>`;
+    <p class="advice">${t.foot}</p>`;
 }
 
 document.querySelectorAll('#langs button').forEach(b => b.onclick = () => { lang = b.dataset.l; render(); });

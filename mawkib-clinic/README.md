@@ -46,7 +46,7 @@ changes nothing — the whole clinic runs on tablet batteries.
 
 **Medicine & stock control**
 - Editable medicine list with per-medicine stock counts and **originating country**
-  — a colored (P)/(IN)/(IR)/(IQ)/(US)/(UK)/(CA) prefix shows on the doctor and
+  — a colored (PK)/(IN)/(IR)/(IQ)/(US)/(UK)/(CA) prefix shows on the doctor and
   pharmacist screens, since the same drug carries different names per country
 - Stock color bars everywhere: **green ≥ 50%, yellow 30–50%, red < 30%**
 - Shortage warnings ("only 4 in stock — prescribed 6") and a **server-enforced hard block**
@@ -128,7 +128,8 @@ save, restart the server (`./start.sh`). That's the entire configuration system:
   "admin_pin": "60175",         ← Admin page (exports, stock, staff lists)
   "intake_exit_pin": "786110",  ← asked when leaving the Patient Intake screen
   "station_exit_pin": "110786", ← asked when leaving the Doctor or Pharmacy screens
-  "port": 8080
+  "port": 8080,
+  "timezone": ""                ← blank = auto-detect the tablet's timezone (e.g. Asia/Baghdad)
 }
 ```
 

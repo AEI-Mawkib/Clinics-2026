@@ -11,5 +11,8 @@
   "_station_exit_pin_help": "Asked when leaving the Doctor or Pharmacy screens.",
 
   "port": 8080,
-  "_port_help": "Leave at 8080 unless it conflicts with something else on the tablet."
+  "_port_help": "Leave at 8080 unless it conflicts with something else on the tablet.",
+
+  "timezone": "",
+  "_timezone_help": "Leave blank to auto-detect the tablet's timezone (e.g. Asia/Baghdad). Or set it explicitly, e.g. \"Asia/Baghdad\"."
 }

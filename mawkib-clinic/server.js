@@ -1,5 +1,5 @@
 /*
- * Mawkib Clinic v11 — runs on ONE Android tablet inside Termux.
+ * Mawkib Clinic v12 — runs on ONE Android tablet inside Termux.
  * ZERO npm dependencies: Node.js built-ins only (http + node:sqlite).
  * v3 adds medicine stock tracking: per-item dispense checkboxes at the
  * pharmacy, live stock counts, and a downloadable end-of-day medicine report.
@@ -17,6 +17,18 @@ const { DatabaseSync } = require('node:sqlite');
 let CFG = {};
 try { CFG = JSON.parse(fs.readFileSync(path.join(__dirname, 'config.json'), 'utf8')); }
 catch (e) { console.log('config.json missing or invalid — using built-in defaults.'); }
+// Timezone: use config.json if set, else ask Android for the tablet's timezone.
+// This makes every timestamp (patient records, clock, exports) follow the tablet's local time.
+if (CFG.timezone) process.env.TZ = String(CFG.timezone);
+else if (!process.env.TZ) {
+  try {
+    const tz = require('child_process').execSync('getprop persist.sys.timezone 2>/dev/null',
+      { timeout: 2000 }).toString().trim();
+    if (tz) process.env.TZ = tz;
+  } catch (e) { /* not Android — keep system default */ }
+}
+console.log('Timezone in use:', process.env.TZ || Intl.DateTimeFormat().resolvedOptions().timeZone);
+
 const PORT = Number(CFG.port) || 8080;
 const ADMIN_PIN = process.env.CLINIC_PIN || String(CFG.admin_pin || '60175');
 const INTAKE_EXIT_PIN = String(CFG.intake_exit_pin || '786110');
@@ -407,6 +419,22 @@ const server = http.createServer(async (req, res) => {
         throughput: { buckets, avg_minutes: avg, completed: times.length } });
     }
 
+    // ---- stage timing averages (station chips: where is the choke point?) ----
+    if (p === '/api/stage-times' && req.method === 'GET') {
+      const date = url.searchParams.get('date') || today();
+      const mins = (a, b) => `(julianday(${b}) - julianday(${a})) * 1440.0`;
+      const a1 = db.prepare(
+        `SELECT AVG(${mins('created_at', 'prescribed_at')}) AS a FROM patients
+          WHERE visit_date = ? AND prescribed_at IS NOT NULL`).get(date);
+      const a2 = db.prepare(
+        `SELECT AVG(${mins('prescribed_at', 'dispensed_at')}) AS a,
+                AVG(${mins('created_at', 'dispensed_at')}) AS t
+           FROM patients WHERE visit_date = ? AND dispensed_at IS NOT NULL AND prescribed_at IS NOT NULL`).get(date);
+      const r1 = (x) => x == null ? null : Math.round(x * 10) / 10;
+      return json(res, 200, { date,
+        avg: { intake_to_doctor: r1(a1.a), doctor_to_pharmacy: r1(a2.a), total: r1(a2.t) } });
+    }
+
     // ---- medicine stock summary (admin dashboard) ----
     if (p === '/api/stock-summary' && req.method === 'GET') {
       const date = url.searchParams.get('date') || today();
@@ -480,6 +508,11 @@ const server = http.createServer(async (req, res) => {
       return fs.createReadStream(DB_FILE).pipe(res);
     }
 
+    if (p === '/api/time' && req.method === 'GET') {
+      const d = new Date();
+      return json(res, 200, { epoch: d.getTime(), offsetMinutes: -d.getTimezoneOffset() });
+    }
+
     if (p === '/api/config' && req.method === 'GET') {
       return json(res, 200, { intake_exit_pin: INTAKE_EXIT_PIN, station_exit_pin: STATION_EXIT_PIN });
     }
@@ -545,7 +578,7 @@ server.listen(PORT, '0.0.0.0', () => {
     for (const n of list || []) if (n.family === 'IPv4' && !n.internal) ips.push(n.address);
   }
   console.log('==========================================');
-  console.log('  Mawkib Clinic v11 (Azadar e Imam Clinic) is running.');
+  console.log('  Mawkib Clinic v12 (Azadar e Imam Clinic) is running.');
   console.log('  Open on the other tablets (same hotspot):');
   for (const ip of ips) console.log(`    http://${ip}:${PORT}`);
   console.log('  On THIS tablet:  http://localhost:' + PORT);

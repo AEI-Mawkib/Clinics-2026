@@ -22,7 +22,8 @@
     <p class="note" style="margin-bottom:0">Names are managed on the Admin page. Your choice is remembered on this tablet.</p>
   </div>
 
-  <div class="stat-grid" id="statsBar" style="margin-bottom:12px"></div>
+  <div class="stat-grid" id="statsBar" style="margin-bottom:10px"></div>
+  <div id="stageTimes" style="margin-bottom:12px"></div>
   <div id="listView">
     <h2>Waiting for consultation</h2>
     <div id="waiting"></div>
@@ -39,8 +40,8 @@
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
         <div><input id="bp" type="text" placeholder="Blood pressure (e.g. 120/80)"></div>
         <div><input id="temperature" type="text" inputmode="decimal" placeholder="Temperature (°C / °F)"></div>
-        <div><input id="height" type="text" inputmode="decimal" placeholder="Height (cm)"></div>
-        <div><input id="weight" type="text" inputmode="decimal" placeholder="Weight (kg)"></div>
+        <div><input id="height" type="text" inputmode="decimal" placeholder="Height (cm/ft)"></div>
+        <div><input id="weight" type="text" inputmode="decimal" placeholder="Weight (kg/lbs)"></div>
       </div>
 
       <label for="notes">Doctor notes</label>
@@ -96,6 +97,7 @@ window._gate = gate;
 async function refresh() {
   showSite('siteBanner');
   renderStatsBar('statsBar');
+  renderStageTimes('stageTimes');
   updateShiftBadge('doctor', '.staff-card', 'doctorShift');
   const list = await api('/api/patients?status=all');
   const waiting = list.filter(p => p.status === 'waiting');

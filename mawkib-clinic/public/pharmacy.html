@@ -22,7 +22,8 @@
     <p class="note" style="margin-bottom:0">Names are managed on the Admin page. Your choice is remembered on this tablet.</p>
   </div>
 
-  <div class="stat-grid" id="statsBar" style="margin-bottom:12px"></div>
+  <div class="stat-grid" id="statsBar" style="margin-bottom:10px"></div>
+  <div id="stageTimes" style="margin-bottom:12px"></div>
   <div id="listView">
     <h2>Ready to dispense</h2>
     <div id="ready"></div>
@@ -58,12 +59,11 @@
     <div class="card" id="qrCard">
       <h2 style="margin-top:0">Patient instructions — QR &amp; print</h2>
       <p class="note">The patient scans this QR with their phone (connected to the clinic WiFi)
-        to read their medicines and dosage in English, Urdu, Farsi or Arabic. Or open the page
-        here to show/print it.</p>
+        to read their medicines and dosage in English, Urdu, Farsi or Arabic. Open the page
+        here to show it or print it from there.</p>
       <div id="qrBox" style="text-align:center;padding:6px 0"></div>
       <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:8px">
         <a class="btn small secondary" id="openRx" href="#" target="_blank">Open instructions page</a>
-        <button class="btn small" id="printRx">🖨 Print instructions</button>
       </div>
     </div>
   </div>
@@ -118,6 +118,7 @@ window._gate = gate;
 async function refresh() {
   showSite('siteBanner');
   renderStatsBar('statsBar');
+  renderStageTimes('stageTimes');
   updateShiftBadge('pharmacist', '.staff-card', 'pharmShift');
   const list = await api('/api/patients?status=all');
   const ready = list.filter(p => p.status === 'prescribed');
@@ -235,10 +236,6 @@ async function openPatient(id) {
       + `<div class="note" style="margin-top:6px">${rxUrl}</div>`;
   } catch (e) { document.getElementById('qrBox').innerHTML = '<div class="note">' + rxUrl + '</div>'; }
   document.getElementById('openRx').href = rxUrl;
-  document.getElementById('printRx').onclick = () => {
-    const w = window.open(rxUrl, '_blank');
-    if (w) w.addEventListener('load', () => setTimeout(() => w.print(), 600));
-  };
 
   document.getElementById('listView').style.display = 'none';
   document.getElementById('detailView').style.display = 'block';
