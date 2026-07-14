@@ -34,8 +34,7 @@ give it to the doctor since the doctor's room is central).
 
 ### 1. Install Termux (a free Linux terminal for Android)
 
-Install **Termux from F-Droid** (not the Play Store copy — it's outdated):
-https://f-droid.org/en/packages/com.termux/
+Install **Termux from the playstore**
 
 ### 2. Install Node.js and the app (inside Termux)
 
