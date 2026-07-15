@@ -99,7 +99,8 @@ let _timeBase = null; // { serverEpoch, offsetMinutes, clientAt }
 async function syncServerTime() {
   try {
     const t = await api('/api/time');
-    _timeBase = { serverEpoch: t.epoch, offsetMinutes: t.offsetMinutes, clientAt: Date.now() };
+    _timeBase = { serverEpoch: t.epoch, offsetMinutes: t.offsetMinutes, clientAt: Date.now(),
+      tempC: t.temp_c };
   } catch (e) { /* keep last sync, or fall back to device time */ }
 }
 function serverNow() {
@@ -124,7 +125,13 @@ function startHeaderClock() {
     const isDay = hours < 12;
     el.classList.toggle('daytime', isDay);
     el.classList.toggle('nighttime', !isDay);
-    el.innerHTML = `<div class="cdate">${z(day)}/${z(month)}/${year}</div>`
+    let tempLine = '';
+    if (_timeBase && _timeBase.tempC !== '' && _timeBase.tempC != null && !isNaN(Number(_timeBase.tempC))) {
+      const c = Number(_timeBase.tempC);
+      tempLine = `<div class="ctemp">🌡 ${Math.round(c)}°C / ${Math.round(c * 9 / 5 + 32)}°F</div>`;
+    }
+    el.innerHTML = `<div class="cdate">${z(day)}/${z(month)}/${year}${tempLine ? '' : ''}</div>`
+      + tempLine
       + `<div class="ctime">${isDay ? '☀️' : '🌙'} ${z(hours % 12 || 12)}:${z(minutes)} ${isDay ? 'am' : 'pm'}</div>`;
   };
   syncServerTime().then(tick);

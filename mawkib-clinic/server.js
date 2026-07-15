@@ -233,6 +233,7 @@ const server = http.createServer(async (req, res) => {
       const b = await readBody(req);
       if ((req.headers['x-pin'] || '') !== ADMIN_PIN) return json(res, 403, { error: 'Wrong PIN' });
       if ('active_site' in b) setSetting('active_site', String(b.active_site || '').trim());
+      if ('temp_c' in b) setSetting('temp_c', String(b.temp_c || '').trim());
       return json(res, 200, { ok: true });
     }
 
@@ -415,7 +416,10 @@ const server = http.createServer(async (req, res) => {
         for (const [max, label] of edges) { if (m < max) { buckets[label]++; break; } }
       }
       const avg = times.length ? Math.round(times.reduce((a, b) => a + b, 0) / times.length) : null;
-      return json(res, 200, { date, gender: g, nationalities: nat, languages: lang,
+      const rush = db.prepare(
+        `SELECT CAST(strftime('%H', created_at) AS INTEGER) AS hour, COUNT(*) AS n
+           FROM patients WHERE visit_date = ? GROUP BY hour ORDER BY n DESC, hour ASC LIMIT 1`).get(date);
+      return json(res, 200, { date, gender: g, nationalities: nat, languages: lang, rush: rush || null,
         throughput: { buckets, avg_minutes: avg, completed: times.length } });
     }
 
@@ -510,7 +514,8 @@ const server = http.createServer(async (req, res) => {
 
     if (p === '/api/time' && req.method === 'GET') {
       const d = new Date();
-      return json(res, 200, { epoch: d.getTime(), offsetMinutes: -d.getTimezoneOffset() });
+      return json(res, 200, { epoch: d.getTime(), offsetMinutes: -d.getTimezoneOffset(),
+        temp_c: getSetting('temp_c') });
     }
 
     if (p === '/api/config' && req.method === 'GET') {

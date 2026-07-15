@@ -232,3 +232,5 @@ body.blink { animation: pageBlink 1s ease-in-out infinite; }
 
 .cchip { display: inline-block; border: 2px solid; border-radius: 6px; background: #fff;
   font-size: 13px; font-weight: 900; padding: 0 6px; margin-right: 6px; vertical-align: 2px; }
+
+.clockbox .ctemp { font-size: 13px; font-weight: 800; color: #ffd0a0; }

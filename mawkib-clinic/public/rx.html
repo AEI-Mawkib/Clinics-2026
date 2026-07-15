@@ -32,6 +32,9 @@
               border-radius: 10px; margin-top: 10px; font-size: 19px; }
   .foot { color: #5c6370; font-size: 15px; margin-top: 12px; }
   .advice { font-weight: 700; margin-top: 12px; }
+  .kvgrid { display: grid; grid-template-columns: 1fr 1fr; gap: 0 10px; }
+  .kvgrid .kv.wide { grid-column: 1 / -1; }
+  .sheetlogo { height: 44px; display: block; margin: 0 auto 4px; }
   .clinichead { text-align: center; border-bottom: 2px solid #16181c; padding-bottom: 8px; margin-bottom: 10px; }
   .clinichead .cname { font-weight: 900; font-size: 20px; }
   .clinichead .csite { font-weight: 700; }
@@ -47,9 +50,14 @@
     .clinichead { border-bottom: 2px solid #000; padding-bottom: 2px; margin-bottom: 3px; }
     .clinichead .cname { font-size: 13px; }
     .clinichead .csite, .clinichead .cmail { font-size: 11px; color: #000; }
-    @page { margin: 0; }
+    @page { size: 80mm auto; margin: 0; }   /* continuous roll: let the page grow, never cut */
+    html, body { height: auto !important; overflow: visible !important; }
     body { background: #fff; font-size: 11px; line-height: 1.25; margin: 0; }
-    main { max-width: 66mm; padding: 4mm 2mm 8mm 5mm; margin: 0; }
+    main { max-width: 66mm; padding: 4mm 2mm 10mm 5mm; margin: 0; }
+    .sheet, .sheet * { overflow: visible !important; }
+    .medbox, .kvgrid, .totalbar, .advice, .clinichead { page-break-inside: avoid; break-inside: avoid; }
+    .sheetlogo { height: 11mm; display: block; margin: 0 auto 1mm; }
+    .kvgrid { gap: 0 6px; }
     .sheet { border: none; padding: 0; border-radius: 0; }
     .sheet h1 { font-size: 12px; margin: 4px 0 2px; border-bottom: 1px solid #000; padding-bottom: 1px; }
     .kv { margin: 0; }
@@ -95,7 +103,7 @@ const T = {
                 'thrice a day': 'three times a day', 'hourly': 'every hour' },
         days: n => `for ${n} day${n > 1 ? 's' : ''}`,
         take: n => `Take ${n} each time`,
-        notGiven: 'NOT given (out of stock) — ask at another clinic',
+        notGiven: 'OUT OF STOCK here — please get this medicine from another clinic or a nearby pharmacy',
         notes: "Doctor's advice", wound: 'Wound care done', by: 'by',
         totalLine: (m, u) => `Total: ${m} medicine${m > 1 ? 's' : ''}, ${u} units`,
         foot: 'If your condition gets worse, please go to the closest medical facility.' },
@@ -111,7 +119,7 @@ const T = {
                 'thrice a day': 'دن میں تین بار', 'hourly': 'ہر گھنٹے' },
         days: n => `${n} دن تک`,
         take: n => `ہر بار ${n} لیں`,
-        notGiven: 'نہیں دی گئی (اسٹاک ختم) — کسی اور کلینک سے پوچھیں',
+        notGiven: 'یہاں اسٹاک ختم ہے — براہ کرم یہ دوا کسی اور کلینک یا قریبی فارمیسی سے حاصل کریں',
         notes: 'ڈاکٹر کا مشورہ', wound: 'زخم کی مرہم پٹی کی گئی', by: 'بذریعہ',
         totalLine: (m, u) => `کل: ${m} دوائیں، ${u} عدد`,
         foot: 'اگر طبیعت زیادہ خراب ہو تو براہ کرم قریب ترین طبی مرکز پر جائیں۔' },
@@ -127,7 +135,7 @@ const T = {
                 'thrice a day': 'سه بار در روز', 'hourly': 'هر ساعت' },
         days: n => `به مدت ${n} روز`,
         take: n => `هر بار ${n} عدد مصرف کنید`,
-        notGiven: 'داده نشد (موجودی تمام شده) — از درمانگاه دیگری بگیرید',
+        notGiven: 'موجودی اینجا تمام شده — لطفاً این دارو را از درمانگاه دیگر یا داروخانه نزدیک تهیه کنید',
         notes: 'توصیه پزشک', wound: 'پانسمان انجام شد', by: 'توسط',
         totalLine: (m, u) => `مجموع: ${m} دارو، ${u} عدد`,
         foot: 'اگر حال شما بدتر شد، لطفاً به نزدیک‌ترین مرکز درمانی مراجعه کنید.' },
@@ -143,7 +151,7 @@ const T = {
                 'thrice a day': 'ثلاث مرات في اليوم', 'hourly': 'كل ساعة' },
         days: n => `لمدة ${n} ${n > 2 && n < 11 ? 'أيام' : 'يوم'}`,
         take: n => `خذ ${n} في كل مرة`,
-        notGiven: 'لم يُصرف (نفد المخزون) — اسأل في عيادة أخرى',
+        notGiven: 'نفد المخزون هنا — يرجى الحصول على هذا الدواء من عيادة أخرى أو صيدلية قريبة',
         notes: 'نصيحة الطبيب', wound: 'تمت العناية بالجرح', by: 'بواسطة',
         totalLine: (m, u) => `المجموع: ${m} أدوية، ${u} وحدة`,
         foot: 'إذا ساءت حالتك، يرجى التوجه إلى أقرب مركز طبي.' },
@@ -176,14 +184,21 @@ function render() {
     p.height ? `<div class="kv"><b>${t.ht}:</b> ${esc(p.height)}</div>` : '',
     p.weight ? `<div class="kv"><b>${t.wt}:</b> ${esc(p.weight)}</div>` : '',
   ].join('');
+  const vitGrid = vit ? `<div class="kvgrid">${vit}</div>` : '';
 
   const items = (p.items || []);
   const givenItems = items.filter(i => i.dispensed);
   const totalUnits = givenItems.reduce((a, i) => a + (i.qty || 0), 0);
 
   const genderWord = p.gender === 'M' ? t.male : p.gender === 'F' ? t.female : p.gender ? t.other : '';
+  let regTime = '';
+  if (p.created_at && p.created_at.length >= 16) {
+    const hh = Number(p.created_at.slice(11, 13)), mm = p.created_at.slice(14, 16);
+    regTime = `· ${hh % 12 || 12}:${mm} ${hh < 12 ? 'am' : 'pm'}`;
+  }
   sheet.innerHTML = `
     <div class="clinichead" dir="ltr">
+      <img class="sheetlogo" src="/logo.png" alt="" onerror="this.style.display='none'">
       <div class="cname">Azadar e Imam Clinic</div>
       ${p.site ? `<div class="csite">📍 ${esc(p.site)}</div>` : ''}
       <div class="cmail">info@azadareimam.org · azadareimam.org</div>
@@ -193,25 +208,28 @@ function render() {
     ${p.pharmacist_name ? `<div class="kv"><b>${t.pharmacist}:</b> ${esc(p.pharmacist_name)}</div>` : ''}
     ${p.intake_by ? `<div class="kv"><b>${t.intakeBy}:</b> ${esc(p.intake_by)}</div>` : ''}
     <hr style="border:none;border-top:1px solid #d8d5cd">
-    <div class="kv"><b>${t.name}:</b> ${esc(p.name)}</div>
-    ${p.age ? `<div class="kv"><b>${t.age}:</b> ${p.age} ${t.yrs}</div>` : ''}
-    ${genderWord ? `<div class="kv"><b>${t.gender}:</b> ${genderWord}</div>` : ''}
-    ${p.nationality ? `<div class="kv"><b>${t.nationality}:</b> ${esc(p.nationality)}</div>` : ''}
-    ${p.complaint ? `<div class="kv"><b>${t.complaint}:</b> ${esc(p.complaint)}</div>` : ''}
-    ${p.allergies ? `<div class="kv" style="color:#b3261e"><b>${t.allergies}:</b> ${esc(p.allergies)}</div>` : ''}
-    <div class="kv"><b>${t.token}:</b> ${p.token} &nbsp; <b>${t.date}:</b> ${esc(p.visit_date)}</div>
-    ${vit ? `<h1 style="margin-top:14px">${t.vitals}</h1>${vit}` : ''}
+    <div class="kvgrid">
+      <div class="kv wide"><b>${t.name}:</b> ${esc(p.name)}</div>
+      ${p.age ? `<div class="kv"><b>${t.age}:</b> ${p.age} ${t.yrs}</div>` : ''}
+      ${genderWord ? `<div class="kv"><b>${t.gender}:</b> ${genderWord}</div>` : ''}
+      ${p.nationality ? `<div class="kv"><b>${t.nationality}:</b> ${esc(p.nationality)}</div>` : ''}
+      ${p.complaint ? `<div class="kv wide"><b>${t.complaint}:</b> ${esc(p.complaint)}</div>` : ''}
+      ${p.allergies ? `<div class="kv wide" style="color:#b3261e"><b>${t.allergies}:</b> ${esc(p.allergies)}</div>` : ''}
+      <div class="kv wide"><b>${t.token}:</b> ${p.token} &nbsp; <b>${t.date}:</b> ${esc(p.visit_date)} ${regTime}</div>
+    </div>
+    ${vit ? `<h1 style="margin-top:14px">${t.vitals}</h1>${vitGrid}` : ''}
     <h1 style="margin-top:14px">${t.meds}</h1>
-    ${items.map(it => it.dispensed ? `
+    ${items.map(it => {
+      const totalUnits = it.dispensed ? it.qty
+        : (it.dose_qty || 1) * ({ 'hourly': 24, 'once a day': 1, 'twice a day': 2, 'thrice a day': 3 }[it.frequency] || 1) * (it.days || 1);
+      return `
       <div class="medbox">
         <div class="mn">${esc(it.name)}</div>
         <div class="mi">${t.take(it.dose_qty)} · ${t.freq[it.frequency] || esc(it.frequency || '')} · ${t.days(it.days || 1)}</div>
-        <div class="mi"><b>${t.total}: ${it.qty} ${t.units}</b></div>
-      </div>` : `
-      <div class="medbox">
-        <div class="mn">${esc(it.name)}</div>
-        <div class="mi ng">${t.notGiven}</div>
-      </div>`).join('') || '<p>—</p>'}
+        <div class="mi"><b>${t.total}: ${totalUnits} ${t.units}</b></div>
+        ${it.dispensed ? '' : `<div class="mi ng">${t.notGiven}</div>`}
+      </div>`;
+    }).join('') || '<p>—</p>'}
     <div class="totalbar">${t.totalLine(givenItems.length, totalUnits)}</div>
     ${p.notes ? `<h1 style="margin-top:14px">${t.notes}</h1><p>${esc(p.notes)}</p>` : ''}
     ${p.wound_care ? `<div class="kv" style="margin-top:10px"><b>${t.wound}:</b> ${esc(p.wound_care)}${p.wound_care_by ? ' — ' + t.by + ' ' + esc(p.wound_care_by) : ''}</div>` : ''}

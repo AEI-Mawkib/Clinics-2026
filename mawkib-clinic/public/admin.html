@@ -24,6 +24,21 @@
   <h2>Today at a glance</h2>
   <div class="stat-grid" id="stats"></div>
 
+  <div class="card" id="rushCard" style="display:none;padding:12px 18px">
+    <div style="font-weight:900;font-size:18px" id="rushLine"></div>
+  </div>
+
+  <h2>Current temperature (shown on every page)</h2>
+  <div class="card">
+    <p class="note">Tablets can't sense outdoor temperature, so the site lead sets it here a few
+      times a day. It appears next to the clock on every station as °C and °F.</p>
+    <div style="display:flex;gap:10px;align-items:center">
+      <input id="tempC" type="number" inputmode="decimal" placeholder="°C" style="width:120px">
+      <button class="btn small" id="setTemp">Set temperature</button>
+      <span class="note" id="tempNow"></span>
+    </div>
+  </div>
+
   <h2>Patients by nationality — today</h2>
   <div class="card"><div class="chips" id="natChips"><span class="note">No patients yet.</span></div></div>
 
@@ -311,8 +326,19 @@ function barRows(el, pairs) {
     </div>`).join('');
 }
 
+function hourLabel(h) {
+  const to12 = (x) => `${x % 12 || 12} ${x < 12 ? 'am' : 'pm'}`;
+  return `${to12(h)} – ${to12((h + 1) % 24)}`;
+}
+
 async function renderAnalytics() {
   const a = await api('/api/analytics');
+  const rc = document.getElementById('rushCard');
+  if (a.rush && a.rush.n) {
+    rc.style.display = 'block';
+    document.getElementById('rushLine').textContent =
+      `⏰ Rush hour today: ${hourLabel(a.rush.hour)} — ${a.rush.n} patient${a.rush.n > 1 ? 's' : ''} registered`;
+  } else rc.style.display = 'none';
   const chip = (arr) => arr.length && arr.some(x => x.n)
     ? arr.map(x => `<span class="chip">${esc(x.k)}: ${x.n}</span>`).join('')
     : '<span class="note">No patients yet.</span>';
@@ -355,6 +381,9 @@ async function loadAll() {
     <div class="stat"><div class="n">${s.waiting || 0}</div><div class="l">Waiting</div></div>
     <div class="stat"><div class="n">${s.prescribed || 0}</div><div class="l">At pharmacy</div></div>
     <div class="stat"><div class="n">${s.dispensed || 0}</div><div class="l">Completed</div></div>`;
+  const tm = await api('/api/time');
+  document.getElementById('tempNow').textContent = tm.temp_c !== '' && tm.temp_c != null && !isNaN(Number(tm.temp_c))
+    ? `currently showing: ${Math.round(Number(tm.temp_c))}°C / ${Math.round(Number(tm.temp_c) * 9 / 5 + 32)}°F` : 'not set';
   await loadDates();
   await renderAnalytics();
   await renderStock();
@@ -362,6 +391,13 @@ async function loadAll() {
   for (const t of Object.keys(LIST_BOX)) await renderList(t);
   await renderMeds();
 }
+
+document.getElementById('setTemp').onclick = async () => {
+  const v = document.getElementById('tempC').value.trim();
+  await api('/api/settings', { method: 'POST', headers: { 'x-pin': PIN }, body: { temp_c: v } });
+  toast(v === '' ? 'Temperature cleared' : 'Temperature set', 'ok');
+  loadAll();
+};
 
 document.getElementById('exportCsv').onclick = () => {
   location.href = '/api/export.csv?date=' + encodeURIComponent(document.getElementById('expDate').value || todayStr());
