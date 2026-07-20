@@ -41,10 +41,11 @@ Install **Termux from the playstore**
 Open Termux and type these lines one at a time:
 
 ```sh
-pkg update -y
-pkg install -y nodejs git
-git clone https://github.com/YOUR-ORG/mawkib-clinic.git
-cd mawkib-clinic
+# 1. Install Termux from Play Store
+# 2. Inside Termux:
+pkg update -y && pkg install -y nodejs git
+git clone https://github.com/aei-mawkib/clinics-2026
+cd clinics-2026
 chmod +x start.sh
 ./start.sh
 ```
