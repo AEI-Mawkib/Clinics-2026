@@ -8,11 +8,11 @@ runtime dependencies** — nothing to download in the field, nothing that can fa
 ```
  ┌────────────┐      WiFi hotspot from the server tablet       ┌────────────┐
  │  Tablet 1  │  ──────────────────┐        ┌───────────────   │  Tablet 3  │
- │   INTAKE   │                    ▼        ▼                  │  PHARMACY  │
- └────────────┘             ┌──────────────────┐               └────────────┘
-                            │     Tablet 2     │
-                            │ DOCTOR + SERVER  │  ← Node.js in Termux + SQLite
-                            └──────────────────┘
+ │   INTAKE   │                    ▼        ▼                  │  Doctor    │
+ └────────────┘             ┌────────────────────┐             └────────────┘
+                            │     Tablet 2       │
+                            │ Pharmacy + SERVER  │  ← Node.js in Termux + SQLite
+                            └────────────────────┘
 ```
 
 No router needed: the server tablet's own hotspot **is** the network, so a power outage
@@ -99,7 +99,7 @@ changes nothing — the whole clinic runs on tablet batteries.
 | Frontend | Vanilla HTML/CSS/JS, no frameworks | — |
 | QR codes | qrcode-generator (bundled, offline) | MIT, free |
 | Printing | Android print services / RawBT | free |
-| Remote access | RustDesk | AGPL, free |
+| Remote access | anyDesk | AGPL, free |
 | Cloud sync | Manual upload of exports to OneDrive when internet appears | your account |
 
 ## Setup (one-time, before travel)
@@ -107,11 +107,11 @@ changes nothing — the whole clinic runs on tablet batteries.
 On the server tablet (give it to the doctor):
 
 ```sh
-# 1. Install Termux from F-Droid (not Play Store): https://f-droid.org/en/packages/com.termux/
+# 1. Install Termux from Play Store
 # 2. Inside Termux:
 pkg update -y && pkg install -y nodejs git
-git clone https://github.com/YOUR-ORG/mawkib-clinic.git
-cd mawkib-clinic
+git clone https://github.com/aei-mawkib/clinics-2026
+cd clinics-2026
 chmod +x start.sh
 ./start.sh
 ```
